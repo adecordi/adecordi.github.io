@@ -1,0 +1,231 @@
+/* ==========================================================================
+   PaoloCAPTCHA — stile del blocco "seleziona solo Paolo"
+   Da caricare insieme a paolocaptcha.js. Tutte le classi hanno prefisso pc-
+   per non entrare in conflitto con il CSS del tuo gioco.
+   ========================================================================== */
+
+#paolocaptcha-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 14, 34, 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: pc-apparsa 0.3s ease;
+}
+
+#paolocaptcha-overlay.pc-via {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+/* mentre il captcha è attivo la pagina sotto non scorre */
+body.pc-bloccata {
+  overflow: hidden;
+}
+
+.pc-card {
+  width: 100%;
+  max-width: 380px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #202124;
+}
+
+.pc-card.pc-scossa {
+  animation: pc-scossa 0.45s ease;
+}
+
+.pc-header {
+  background: linear-gradient(135deg, #1a73e8, #4a90d9);
+  color: #ffffff;
+  padding: 14px 18px 16px;
+}
+
+.pc-card.pc-ok .pc-header {
+  background: linear-gradient(135deg, #0f9d58, #34a853);
+}
+
+.pc-header-mini {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  opacity: 0.85;
+  text-transform: uppercase;
+}
+
+.pc-header h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.pc-header h2 strong {
+  font-weight: 800;
+}
+
+.pc-griglia {
+  display: grid;
+  gap: 5px;
+  padding: 10px 10px 6px;
+  background: #ffffff;
+}
+
+.pc-cella {
+  position: relative;
+  padding: 0;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, border-color 0.12s ease, border-radius 0.12s ease;
+}
+
+.pc-cella img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.pc-cella:hover {
+  transform: scale(1.03);
+}
+
+.pc-cella.pc-selezionata {
+  border-color: #1a73e8;
+  border-radius: 12px;
+  transform: scale(0.88);
+}
+
+.pc-spunta {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0.4);
+  transition: 0.15s ease;
+}
+
+.pc-cella.pc-selezionata .pc-spunta {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.pc-card.pc-ok .pc-cella.pc-selezionata {
+  border-color: #0f9d58;
+}
+
+.pc-card.pc-ok .pc-spunta {
+  background: #0f9d58;
+}
+
+.pc-messaggio {
+  min-height: 20px;
+  margin: 0;
+  padding: 2px 14px;
+  font-size: 13px;
+  text-align: center;
+  color: #d93025;
+  font-weight: 600;
+}
+
+.pc-messaggio.pc-verde {
+  color: #0f9d58;
+}
+
+.pc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px 14px;
+}
+
+.pc-nota {
+  flex: 1;
+  margin: 0;
+  font-size: 11px;
+  color: #5f6368;
+  line-height: 1.4;
+}
+
+.pc-ricarica {
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #5f6368;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  touch-action: manipulation;
+}
+
+.pc-ricarica:hover {
+  background: #f1f3f4;
+}
+
+.pc-verifica {
+  border: none;
+  background: #1a73e8;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pc-verifica:hover {
+  background: #1765cc;
+}
+
+.pc-verifica:disabled,
+.pc-ricarica:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@keyframes pc-apparsa {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pc-scossa {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-10px); }
+  40% { transform: translateX(10px); }
+  60% { transform: translateX(-7px); }
+  80% { transform: translateX(7px); }
+}
+
+@media (max-width: 420px) {
+  .pc-header h2 { font-size: 15px; }
+  .pc-verifica { padding: 10px 16px; }
+}
