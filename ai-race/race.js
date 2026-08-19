@@ -170,7 +170,7 @@
     ctx.globalAlpha = a3 * 0.75 * out;
     ctx.fillStyle = 'rgba(160,175,205,0.9)';
     ctx.font = '400 30px ' + FONT;
-    ctx.fillText('9 player · 4 anni · un minuto', W / 2, 690);
+    ctx.fillText(players.length + ' player · 4 anni · un minuto', W / 2, 690);
     ctx.restore();
   }
 
@@ -335,7 +335,7 @@
       s, want: yOf(s.e),
       text: (s.p.shortName || s.p.name) + ' · ' + s.model,
     })).sort((a, b) => a.want - b.want);
-    const GAP = 34;
+    const GAP = 29;
     for (let i = 0; i < labels.length; i++) {
       labels[i].y = i === 0 ? labels[i].want : Math.max(labels[i].want, labels[i - 1].y + GAP);
     }
@@ -371,15 +371,15 @@
       ctx.save();
       const fx = px + 26;
       if (L.s.p.flag) {
-        ctx.font = '20px ' + EFONT;
+        ctx.font = '17px ' + EFONT;
         ctx.fillText(L.s.p.flag, fx, L.y);
       }
-      const tx = fx + (L.s.p.flag ? 32 : 0);
+      const tx = fx + (L.s.p.flag ? 27 : 0);
       ctx.fillStyle = L.s.p.color;
-      ctx.font = (isLead ? '800 25px ' : '600 21px ') + FONT;
+      ctx.font = (isLead ? '800 23px ' : '600 19px ') + FONT;
       ctx.fillText(L.text, tx, L.y);
       ctx.fillStyle = 'rgba(235,240,250,0.85)';
-      ctx.font = '400 20px ' + FONT;
+      ctx.font = '400 18px ' + FONT;
       ctx.fillText(String(Math.round(L.s.e)), tx + measure(L.text, isLead) + 12, L.y);
       if (isLead) drawCrown(px, py - 16, 11, GOLD);
       ctx.restore();
@@ -396,7 +396,7 @@
 
     function measure(text, isLead) {
       ctx.save();
-      ctx.font = (isLead ? '800 25px ' : '600 21px ') + FONT;
+      ctx.font = (isLead ? '800 23px ' : '600 19px ') + FONT;
       const w = ctx.measureText(text).width;
       ctx.restore();
       return w;
@@ -420,11 +420,11 @@
     ctx.fillText('il miglior modello di ogni player · LMArena Elo', W / 2, 168);
 
     const t0 = RACE_END + 0.6;
-    const rowH = 74, top = 218;
-    const xRank = 230, xName = 280, barX = 940, barMax = 570, xElo = barX + barMax + 30;
+    const rowH = 56, top = 212;
+    const xRank = 210, xName = 252, barX = 900, barMax = 590, xElo = barX + barMax + 26;
 
     ranked.forEach((r, i) => {
-      const st = t0 + i * 0.24;
+      const st = t0 + i * 0.17;
       const k = clamp01((sec - st) / 0.5);
       if (k <= 0) return;
       const y = top + i * rowH;
@@ -433,43 +433,43 @@
       ctx.globalAlpha = alpha * k;
       ctx.textAlign = 'right';
       ctx.fillStyle = i === 0 ? GOLD : 'rgba(190,200,225,0.9)';
-      ctx.font = '800 40px ' + FONT;
-      ctx.fillText(String(i + 1), xRank, y + 14);
+      ctx.font = '800 30px ' + FONT;
+      ctx.fillText(String(i + 1), xRank, y + 10);
 
       ctx.beginPath();
       ctx.fillStyle = r.p.color;
-      ctx.arc(xName + 16, y, 13, 0, Math.PI * 2);
+      ctx.arc(xName + 12, y, 10, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.textAlign = 'left';
       if (r.p.flag) {
-        ctx.font = '28px ' + EFONT;
-        ctx.fillText(r.p.flag, xName + 44, y + 12);
+        ctx.font = '21px ' + EFONT;
+        ctx.fillText(r.p.flag, xName + 34, y + 9);
       }
-      const nx = xName + 44 + (r.p.flag ? 44 : 0);
+      const nx = xName + 34 + (r.p.flag ? 34 : 0);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '700 32px ' + FONT;
-      ctx.fillText(r.p.name, nx, y + 12);
+      ctx.font = '700 25px ' + FONT;
+      ctx.fillText(r.p.name, nx, y + 9);
       ctx.fillStyle = 'rgba(190,202,230,0.95)';
-      ctx.font = '400 28px ' + FONT;
-      ctx.fillText(r.model, nx + nameW(r.p.name) + 22, y + 12);
+      ctx.font = '400 22px ' + FONT;
+      ctx.fillText(r.model, nx + nameW(r.p.name) + 18, y + 9);
 
       const len = barMax * (r.e - 1000) / (EMAX - 1000) * grow;
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
-      roundRect(barX, y - 17, barMax, 34, 8);
+      roundRect(barX, y - 14, barMax, 27, 7);
       ctx.fill();
       ctx.fillStyle = r.p.color;
-      roundRect(barX, y - 17, Math.max(len, 12), 34, 8);
+      roundRect(barX, y - 14, Math.max(len, 12), 27, 7);
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '700 32px ' + FONT;
-      ctx.fillText(String(Math.round(1000 + (r.e - 1000) * grow)), xElo, y + 12);
-      if (i === 0 && grow > 0.9) drawCrown(barX + len - 26, y - 24, 13, GOLD);
+      ctx.font = '700 25px ' + FONT;
+      ctx.fillText(String(Math.round(1000 + (r.e - 1000) * grow)), xElo, y + 9);
+      if (i === 0 && grow > 0.9) drawCrown(barX + len - 22, y - 20, 11, GOLD);
       ctx.restore();
     });
 
-    const aTag = clamp01((sec - 57.2) / 0.7);
+    const aTag = clamp01((sec - 57.6) / 0.7);
     if (aTag > 0) {
       ctx.globalAlpha = alpha * aTag;
       ctx.textAlign = 'center';
@@ -487,7 +487,7 @@
 
     function nameW(name) {
       ctx.save();
-      ctx.font = '700 32px ' + FONT;
+      ctx.font = '700 25px ' + FONT;
       const w = ctx.measureText(name).width;
       ctx.restore();
       return w;

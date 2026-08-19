@@ -145,6 +145,48 @@ window.AIRACE_DATA = {
         { d: '2026-07-16', m: 'Kimi K3',         elo: 1498 },
       ],
     },
+    {
+      id: 'zhipu', name: 'Z.ai (Zhipu)', shortName: 'Z.ai', flag: '🇨🇳', color: '#9ad34a',
+      releases: [
+        { d: '2023-03-14', m: 'ChatGLM-6B',   elo: 1000 },
+        { d: '2024-01-16', m: 'GLM-4',        elo: 1150 },
+        { d: '2024-08-29', m: 'GLM-4-Plus',   elo: 1245 },
+        { d: '2025-07-28', m: 'GLM-4.5',      elo: 1400 },
+        { d: '2025-09-30', m: 'GLM-4.6',      elo: 1425 },
+        { d: '2026-02-11', m: 'GLM-5',        elo: 1478 },
+        { d: '2026-07-01', m: 'GLM-5.3',      elo: 1492 },
+      ],
+    },
+    {
+      id: 'bytedance', name: 'ByteDance', shortName: 'ByteDance', flag: '🇨🇳', color: '#14b8a6',
+      releases: [
+        { d: '2024-05-15', m: 'Doubao Pro',      elo: 1150 },
+        { d: '2025-01-22', m: 'Doubao 1.5 Pro',  elo: 1310 },
+        { d: '2025-06-11', m: 'Doubao-Seed 1.6', elo: 1400 },
+        { d: '2026-02-14', m: 'Doubao-Seed 2.0', elo: 1465 },
+        { d: '2026-06-23', m: 'Seed 2.1',        elo: 1487 },
+      ],
+    },
+    {
+      id: 'minimax', name: 'MiniMax', flag: '🇨🇳', color: '#ff4d4d',
+      releases: [
+        { d: '2024-04-17', m: 'abab6.5',     elo: 1120 },
+        { d: '2025-01-15', m: 'Text-01',     elo: 1290 },
+        { d: '2025-06-17', m: 'MiniMax M1',  elo: 1380 },
+        { d: '2025-10-27', m: 'MiniMax M2',  elo: 1440 },
+        { d: '2026-06-01', m: 'MiniMax M3',  elo: 1483 },
+      ],
+    },
+    {
+      id: 'baidu', name: 'Baidu', flag: '🇨🇳', color: '#d9a441',
+      releases: [
+        { d: '2023-03-16', m: 'ERNIE Bot',       elo: 1020 },
+        { d: '2023-10-17', m: 'ERNIE 4.0',       elo: 1130 },
+        { d: '2024-06-28', m: 'ERNIE 4.0 Turbo', elo: 1230 },
+        { d: '2025-03-16', m: 'ERNIE 4.5',       elo: 1330 },
+        { d: '2025-11-13', m: 'ERNIE 5.0',       elo: 1462 },
+      ],
+    },
   ],
 
   // Callout mostrati durante la gara (data di attivazione + titolo + nota)
