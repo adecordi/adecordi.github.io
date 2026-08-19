@@ -18,7 +18,7 @@ window.AIRACE_DATA = {
 
   players: [
     {
-      id: 'openai', name: 'OpenAI', color: '#10c99a',
+      id: 'openai', name: 'OpenAI', flag: '🇺🇸', color: '#10c99a',
       releases: [
         { d: '2022-11-30', m: 'GPT-3.5 (ChatGPT)', elo: 1075 },
         { d: '2023-03-14', m: 'GPT-4',             elo: 1190 },
@@ -34,7 +34,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'google', name: 'Google', color: '#4c8bf5',
+      id: 'google', name: 'Google', flag: '🇺🇸', color: '#4c8bf5',
       releases: [
         { d: '2023-03-21', m: 'Bard (LaMDA)',   elo: 1035 },
         { d: '2023-05-10', m: 'PaLM 2',         elo: 1090 },
@@ -47,7 +47,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'anthropic', name: 'Anthropic', color: '#e07a52',
+      id: 'anthropic', name: 'Anthropic', flag: '🇺🇸', color: '#e07a52',
       releases: [
         { d: '2023-03-14', m: 'Claude 1',          elo: 1120 },
         { d: '2023-07-11', m: 'Claude 2',          elo: 1135 },
@@ -62,7 +62,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'meta', name: 'Meta', color: '#2f80ed',
+      id: 'meta', name: 'Meta', flag: '🇺🇸', color: '#2f80ed',
       releases: [
         { d: '2023-02-24', m: 'LLaMA',            elo: 1005 },
         { d: '2023-07-18', m: 'Llama 2',          elo: 1080 },
@@ -73,7 +73,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'xai', name: 'xAI', color: '#e8e8ec',
+      id: 'xai', name: 'xAI', flag: '🇺🇸', color: '#e8e8ec',
       releases: [
         { d: '2023-11-04', m: 'Grok-1',   elo: 1075 },
         { d: '2024-08-13', m: 'Grok 2',   elo: 1288 },
@@ -86,7 +86,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'deepseek', name: 'DeepSeek', color: '#6c7bff',
+      id: 'deepseek', name: 'DeepSeek', flag: '🇨🇳', color: '#6c7bff',
       releases: [
         { d: '2023-11-29', m: 'DeepSeek LLM',     elo: 1078 },
         { d: '2024-05-06', m: 'DeepSeek-V2',      elo: 1220 },
@@ -99,7 +99,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'microsoft', name: 'Microsoft', color: '#39c5f3',
+      id: 'microsoft', name: 'Microsoft', flag: '🇺🇸', color: '#39c5f3',
       releases: [
         { d: '2024-04-23', m: 'Phi-3',          elo: 1095 },
         { d: '2024-12-12', m: 'Phi-4',          elo: 1205 },
@@ -108,7 +108,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'mistral', name: 'Mistral', color: '#ff8f2d',
+      id: 'mistral', name: 'Mistral', flag: '🇫🇷', color: '#ff8f2d',
       releases: [
         { d: '2023-09-27', m: 'Mistral 7B',         elo: 1010 },
         { d: '2023-12-11', m: 'Mixtral 8x7B',       elo: 1120 },
@@ -120,7 +120,7 @@ window.AIRACE_DATA = {
       ],
     },
     {
-      id: 'qwen', name: 'Alibaba (Qwen)', shortName: 'Qwen', color: '#b06bf7',
+      id: 'qwen', name: 'Alibaba (Qwen)', shortName: 'Qwen', flag: '🇨🇳', color: '#b06bf7',
       releases: [
         { d: '2023-12-01', m: 'Qwen-72B',    elo: 1090 },
         { d: '2024-06-07', m: 'Qwen2-72B',   elo: 1190 },
@@ -132,6 +132,19 @@ window.AIRACE_DATA = {
         { d: '2026-08-03', m: 'Qwen3.8 Max', elo: 1490 },
       ],
     },
+    {
+      id: 'moonshot', name: 'Moonshot (Kimi)', shortName: 'Kimi', flag: '🇨🇳', color: '#ff5c8a',
+      releases: [
+        { d: '2023-10-09', m: 'Kimi Chat',       elo: 1060 },
+        { d: '2024-11-16', m: 'Kimi k0-math',    elo: 1215 },
+        { d: '2025-01-20', m: 'Kimi k1.5',       elo: 1352 },
+        { d: '2025-07-11', m: 'Kimi K2',         elo: 1425 },
+        { d: '2025-11-06', m: 'K2 Thinking',     elo: 1460 },
+        { d: '2026-01-27', m: 'Kimi K2.5',       elo: 1472 },
+        { d: '2026-04-15', m: 'Kimi K2.6',       elo: 1481 },
+        { d: '2026-07-16', m: 'Kimi K3',         elo: 1498 },
+      ],
+    },
   ],
 
   // Callout mostrati durante la gara (data di attivazione + titolo + nota)
@@ -141,7 +154,7 @@ window.AIRACE_DATA = {
     { d: '2023-12-06', title: 'Google risponde',        note: 'arriva Gemini, la corsa diventa a più voci' },
     { d: '2024-03-04', title: 'Claude 3 Opus',          note: 'Anthropic sorpassa GPT-4 in Arena' },
     { d: '2024-07-23', title: 'Llama 3.1 405B',         note: 'l’open source di Meta raggiunge i frontier' },
-    { d: '2025-01-20', title: 'Momento DeepSeek',       note: 'R1: frontier open-weight a costo minimo' },
+    { d: '2025-01-20', title: 'La Cina al frontier',    note: 'DeepSeek R1 e Kimi k1.5: open-weight a costo minimo' },
     { d: '2025-04-16', title: 'L’era del reasoning', note: 'o3, Gemini 2.5 Pro, Grok 3: GPQA sopra l’85%' },
     { d: '2025-08-07', title: 'GPT-5 debutta',          note: 'SWE-bench Verified oltre il 75%' },
     { d: '2025-11-18', title: 'Gemini 3 & Grok 4.1',    note: 'Google in testa, Microsoft entra con MAI-1' },

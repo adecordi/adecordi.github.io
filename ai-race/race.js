@@ -17,6 +17,7 @@
   const RACE_END  = 52.0;  // s: inizio transizione alla classifica
 
   const FONT = '"Inter","Segoe UI",Arial,sans-serif';
+  const EFONT = '"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif';
   const BG = '#0b0f1a';
   const GOLD = '#ffd166';
   const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno',
@@ -94,7 +95,7 @@
   function finalElo(p) { return p.rel[p.rel.length - 1].elo; }
 
   // --- geometria del grafico ---
-  const ML = 104, MR = 408, MT = 138, MB = 96;
+  const ML = 104, MR = 476, MT = 138, MB = 96;
   const EMIN = 980, EMAX = 1565;
   const xOf = t => ML + (W - ML - MR) * (t - D.tStart) / (D.tEnd - D.tStart);
   const yOf = e => H - MB - (H - MT - MB) * (e - EMIN) / (EMAX - EMIN);
@@ -368,12 +369,18 @@
         ctx.restore();
       }
       ctx.save();
+      const fx = px + 26;
+      if (L.s.p.flag) {
+        ctx.font = '20px ' + EFONT;
+        ctx.fillText(L.s.p.flag, fx, L.y);
+      }
+      const tx = fx + (L.s.p.flag ? 32 : 0);
       ctx.fillStyle = L.s.p.color;
       ctx.font = (isLead ? '800 25px ' : '600 21px ') + FONT;
-      ctx.fillText(L.text, px + 26, L.y);
+      ctx.fillText(L.text, tx, L.y);
       ctx.fillStyle = 'rgba(235,240,250,0.85)';
       ctx.font = '400 20px ' + FONT;
-      ctx.fillText(String(Math.round(L.s.e)), px + 26 + measure(L.text, isLead) + 12, L.y);
+      ctx.fillText(String(Math.round(L.s.e)), tx + measure(L.text, isLead) + 12, L.y);
       if (isLead) drawCrown(px, py - 16, 11, GOLD);
       ctx.restore();
     }
@@ -413,8 +420,8 @@
     ctx.fillText('il miglior modello di ogni player · LMArena Elo', W / 2, 168);
 
     const t0 = RACE_END + 0.6;
-    const rowH = 82, top = 226;
-    const xRank = 250, xName = 300, barX = 880, barMax = 660, xElo = barX + barMax + 30;
+    const rowH = 74, top = 218;
+    const xRank = 230, xName = 280, barX = 940, barMax = 570, xElo = barX + barMax + 30;
 
     ranked.forEach((r, i) => {
       const st = t0 + i * 0.24;
@@ -435,12 +442,17 @@
       ctx.fill();
 
       ctx.textAlign = 'left';
+      if (r.p.flag) {
+        ctx.font = '28px ' + EFONT;
+        ctx.fillText(r.p.flag, xName + 44, y + 12);
+      }
+      const nx = xName + 44 + (r.p.flag ? 44 : 0);
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 32px ' + FONT;
-      ctx.fillText(r.p.name, xName + 46, y + 12);
+      ctx.fillText(r.p.name, nx, y + 12);
       ctx.fillStyle = 'rgba(190,202,230,0.95)';
       ctx.font = '400 28px ' + FONT;
-      ctx.fillText(r.model, xName + 46 + nameW(r.p.name) + 22, y + 12);
+      ctx.fillText(r.model, nx + nameW(r.p.name) + 22, y + 12);
 
       const len = barMax * (r.e - 1000) / (EMAX - 1000) * grow;
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
