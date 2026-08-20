@@ -9,12 +9,13 @@
 
   const D = window.AIRACE_DATA;
   const W = 1920, H = 1080;
-  const FPS = 30, DUR = 60;
+  const FPS = 30, DUR = 180;
   const TOTAL = FPS * DUR;
 
-  const INTRO_END = 4.5;   // s: fine intro
-  const RACE_HOLD = 50.0;  // s: il cursore temporale arriva a "oggi"
-  const RACE_END  = 52.0;  // s: inizio transizione alla classifica
+  const INTRO_END = 6.0;    // s: fine intro
+  const RACE_HOLD = 158.0;  // s: il cursore temporale arriva a "oggi"
+  const RACE_END  = 163.0;  // s: inizio transizione alla classifica
+  const TAG_AT    = 174.5;  // s: comparsa della chiusura
 
   const FONT = '"Inter","Segoe UI",Arial,sans-serif';
   const EFONT = '"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif';
@@ -24,19 +25,19 @@
                 'luglio','agosto','settembre','ottobre','novembre','dicembre'];
 
   const DAY = 86400000;
-  const RAMP = 40 * DAY; // giorni di "salita" morbida dopo ogni release
+  const RAMP = 30 * DAY; // giorni di "salita" morbida dopo ogni release
 
   function u(s) { const p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
 
   // --- pianificazione tempo-animazione -> tempo-dati (piecewise lineare) ---
   const SCHED = [
     [INTRO_END, u('2022-11-30')],
-    [10.0, u('2023-06-01')],
-    [15.5, u('2024-01-01')],
-    [22.0, u('2024-09-01')],
-    [27.0, u('2025-01-25')],
-    [33.0, u('2025-08-01')],
-    [38.0, u('2026-01-01')],
+    [22.0,  u('2023-06-01')],
+    [38.0,  u('2024-01-01')],
+    [62.0,  u('2024-09-01')],
+    [80.0,  u('2025-01-25')],
+    [108.0, u('2025-08-01')],
+    [128.0, u('2026-01-01')],
     [RACE_HOLD, D.tEnd],
   ];
 
@@ -69,7 +70,7 @@
   players.forEach(p => p.rel.sort((a, b) => a.t - b.t));
 
   const milestones = D.milestones.map(m => ({ ...m, t: u(m.d), sec: animSecOf(u(m.d)) }));
-  const CARD_DUR = 3.2;
+  const CARD_DUR = 5.6;
 
   const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
   const easeInOut = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
@@ -174,10 +175,10 @@
 
   // ------------------------------------------------------------------ intro
   function drawIntro(sec) {
-    const inA = clamp01(sec / 0.8);
-    const a2 = clamp01((sec - 0.7) / 0.8);
-    const a3 = clamp01((sec - 1.5) / 0.8);
-    const out = 1 - clamp01((sec - (INTRO_END - 0.6)) / 0.6);
+    const inA = clamp01(sec / 1.0);
+    const a2 = clamp01((sec - 1.0) / 0.9);
+    const a3 = clamp01((sec - 2.0) / 0.9);
+    const out = 1 - clamp01((sec - (INTRO_END - 0.9)) / 0.9);
     ctx.save();
     ctx.globalAlpha = out;
     ctx.textAlign = 'center';
@@ -467,7 +468,7 @@
     const xRank = 210, xName = 252, barX = 900, barMax = 590, xElo = barX + barMax + 26;
 
     ranked.forEach((r, i) => {
-      const st = t0 + i * 0.17;
+      const st = t0 + i * 0.34;
       const k = clamp01((sec - st) / 0.5);
       if (k <= 0) return;
       const y = top + i * rowH;
@@ -512,7 +513,7 @@
       ctx.restore();
     });
 
-    const aTag = clamp01((sec - 57.6) / 0.7);
+    const aTag = clamp01((sec - TAG_AT) / 0.8);
     if (aTag > 0) {
       ctx.globalAlpha = alpha * aTag;
       ctx.textAlign = 'center';
@@ -543,7 +544,7 @@
     drawBackground();
 
     if (sec < INTRO_END) {
-      const raceIn = clamp01((sec - (INTRO_END - 0.6)) / 0.6);
+      const raceIn = clamp01((sec - (INTRO_END - 0.9)) / 0.9);
       if (raceIn > 0) drawRace(sec, raceIn * 0.9);
       drawIntro(sec);
     } else if (sec < RACE_END) {
