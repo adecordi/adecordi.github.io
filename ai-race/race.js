@@ -30,15 +30,18 @@
   function u(s) { const p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
 
   // --- pianificazione tempo-animazione -> tempo-dati (piecewise lineare) ---
+  // Il tempo non scorre a velocità costante: ogni segmento è più lento del
+  // precedente (da ~19 a ~4 giorni al secondo), così il finale si legge bene.
   const SCHED = [
     [INTRO_END, u('2022-11-30')],
-    [22.0,  u('2023-06-01')],
-    [38.0,  u('2024-01-01')],
-    [62.0,  u('2024-09-01')],
-    [80.0,  u('2025-01-25')],
-    [108.0, u('2025-08-01')],
-    [128.0, u('2026-01-01')],
-    [RACE_HOLD, D.tEnd],
+    [15.5,  u('2023-06-01')],   // 19.3 giorni/s
+    [29.5,  u('2024-01-01')],   // 15.3
+    [48.5,  u('2024-09-01')],   // 12.8
+    [63.0,  u('2025-01-25')],   // 10.1
+    [86.0,  u('2025-08-01')],   //  8.1
+    [110.5, u('2026-01-01')],   //  6.2
+    [133.0, u('2026-05-01')],   //  5.3
+    [RACE_HOLD, D.tEnd],        //  4.4
   ];
 
   function dataTime(sec) {
@@ -70,7 +73,7 @@
   players.forEach(p => p.rel.sort((a, b) => a.t - b.t));
 
   const milestones = D.milestones.map(m => ({ ...m, t: u(m.d), sec: animSecOf(u(m.d)) }));
-  const CARD_DUR = 5.6;
+  const CARD_DUR = 5.0;
 
   const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
   const easeInOut = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
@@ -96,7 +99,8 @@
   function finalElo(p) { return p.rel[p.rel.length - 1].elo; }
 
   // --- geometria del grafico ---
-  const ML = 104, MR = 476, MT = 138, MB = 96;
+  const ML = 104, MR = 476, MT = 250, MB = 96;
+  const BAND_Y = 150, BAND_H = 84;   // fascia dei callout, sopra il grafico
   const BAR_TOP = 1560;          // scala delle barre nella classifica finale
   const OUTLIER = 230;           // punti sotto il leader oltre i quali si esce dalla scala
   const VIEW = { lo: 980, hi: 1565 };
@@ -274,25 +278,27 @@
     if (!cur) return;
     const lt = sec - cur.sec;
     const a = Math.min(clamp01(lt / 0.35), clamp01((end - sec) / 0.35));
-    const cw = 640, ch = 116;
-    const cx = ML + 18, cy = MT + 10 - (1 - easeOutCubic(clamp01(lt / 0.4))) * 14;
+    const cx = ML, cw = (W - MR) - ML, ch = BAND_H;
+    const cy = BAND_Y - (1 - easeOutCubic(clamp01(lt / 0.4))) * 12;
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = 'rgba(13,18,34,0.94)';
-    roundRect(cx, cy, cw, ch, 14);
+    ctx.fillStyle = 'rgba(13,18,34,0.92)';
+    roundRect(cx, cy, cw, ch, 12);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,209,102,0.35)';
+    ctx.strokeStyle = 'rgba(255,209,102,0.30)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.fillStyle = GOLD;
-    ctx.fillRect(cx, cy + 10, 6, ch - 20);
+    ctx.fillRect(cx, cy + 12, 6, ch - 24);
     ctx.textAlign = 'left';
+    const base = cy + 53;
     ctx.fillStyle = '#ffffff';
     ctx.font = '800 36px ' + FONT;
-    ctx.fillText(cur.title, cx + 28, cy + 48);
-    ctx.fillStyle = 'rgba(200,212,238,0.95)';
+    ctx.fillText(cur.title, cx + 30, base);
+    const tw = ctx.measureText(cur.title).width;
+    ctx.fillStyle = 'rgba(200,212,238,0.92)';
     ctx.font = '400 27px ' + FONT;
-    ctx.fillText(cur.note, cx + 28, cy + 90);
+    ctx.fillText(cur.note, cx + 30 + tw + 26, base);
     ctx.restore();
   }
 
