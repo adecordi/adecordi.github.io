@@ -96,9 +96,40 @@
 
   // --- geometria del grafico ---
   const ML = 104, MR = 476, MT = 138, MB = 96;
-  const EMIN = 980, EMAX = 1565;
+  const BAR_TOP = 1560;          // scala delle barre nella classifica finale
+  const OUTLIER = 230;           // punti sotto il leader oltre i quali si esce dalla scala
+  const VIEW = { lo: 980, hi: 1565 };
   const xOf = t => ML + (W - ML - MR) * (t - D.tStart) / (D.tEnd - D.tStart);
-  const yOf = e => H - MB - (H - MT - MB) * (e - EMIN) / (EMAX - EMIN);
+  const yOf = e => H - MB - (H - MT - MB) * (e - VIEW.lo) / (VIEW.hi - VIEW.lo);
+
+  // Finestra verticale grezza a un dato istante: racchiude i player in gara,
+  // escludendo chi è troppo staccato dal leader (resta sotto il bordo).
+  function rawWindow(tc) {
+    const vals = [];
+    for (const p of players) {
+      const e = eloAt(p, tc);
+      if (e !== null) vals.push(e);
+    }
+    if (!vals.length) return { lo: 1000, hi: 1150 };
+    const hi = Math.max(...vals);
+    const inScale = vals.filter(v => v >= hi - OUTLIER);
+    let lo = Math.min(...inScale);
+    let span = hi - lo;
+    if (span < 150) { const mid = (lo + hi) / 2; return { lo: mid - 87, hi: mid + 88 }; }
+    return { lo: lo - span * 0.13, hi: hi + span * 0.15 };
+  }
+
+  // Media sugli ultimi istanti: assorbe lo scatto quando un player entra in gara.
+  function setView(sec) {
+    const N = 12, BACK = 0.8;
+    let lo = 0, hi = 0, wsum = 0;
+    for (let i = 0; i < N; i++) {
+      const w = 1 - i / N;
+      const win = rawWindow(dataTime(Math.max(sec - BACK * i / (N - 1), INTRO_END)));
+      lo += win.lo * w; hi += win.hi * w; wsum += w;
+    }
+    VIEW.lo = lo / wsum; VIEW.hi = hi / wsum;
+  }
 
   // --- canvas ---
   const canvas = document.getElementById('stage');
@@ -182,7 +213,9 @@
     ctx.lineWidth = 1;
     ctx.font = '400 24px ' + FONT;
     ctx.textAlign = 'right';
-    for (let e = 1000; e <= 1500; e += 100) {
+    const span = VIEW.hi - VIEW.lo;
+    const step = span > 420 ? 100 : span > 230 ? 50 : 25;
+    for (let e = Math.ceil(VIEW.lo / step) * step; e <= VIEW.hi; e += step) {
       const y = yOf(e);
       ctx.beginPath();
       ctx.moveTo(ML, y); ctx.lineTo(W - MR, y);
@@ -231,13 +264,15 @@
   }
 
   function drawMilestone(sec) {
-    let cur = null;
-    for (const m of milestones) {
-      if (sec >= m.sec && sec < m.sec + CARD_DUR) cur = m;
+    let cur = null, end = 0;
+    for (let i = 0; i < milestones.length; i++) {
+      const m = milestones[i], next = milestones[i + 1];
+      const stop = Math.min(m.sec + CARD_DUR, next ? next.sec - 0.1 : Infinity);
+      if (sec >= m.sec && sec < stop) { cur = m; end = stop; }
     }
     if (!cur) return;
     const lt = sec - cur.sec;
-    const a = Math.min(clamp01(lt / 0.35), clamp01((CARD_DUR - lt) / 0.35));
+    const a = Math.min(clamp01(lt / 0.35), clamp01((end - sec) / 0.35));
     const cw = 640, ch = 116;
     const cx = ML + 18, cy = MT + 10 - (1 - easeOutCubic(clamp01(lt / 0.4))) * 14;
     ctx.save();
@@ -262,6 +297,7 @@
 
   function drawRace(sec, alpha) {
     const tc = dataTime(sec);
+    setView(sec);
     ctx.save();
     ctx.globalAlpha = alpha;
 
@@ -292,6 +328,9 @@
       const isLead = s === leader;
       const x0 = xOf(p.rel[0].t);
       ctx.save();
+      ctx.beginPath();
+      ctx.rect(ML - 2, MT - 24, (W - MR) - ML + 6, (H - MB) - MT + 26);
+      ctx.clip();
       ctx.strokeStyle = p.color;
       ctx.globalAlpha = alpha * (isLead ? 1 : 0.62);
       ctx.lineWidth = isLead ? 5 : 3;
@@ -331,10 +370,14 @@
     }
 
     // etichette sulla punta, con anti-collisione
-    const labels = state.map(s => ({
-      s, want: yOf(s.e),
-      text: (s.p.shortName || s.p.name) + ' · ' + s.model,
-    })).sort((a, b) => a.want - b.want);
+    const labels = state.map(s => {
+      const off = s.e < VIEW.lo;
+      return {
+        s, off,
+        want: Math.min(Math.max(yOf(s.e), MT + 12), H - MB - 12),
+        text: (off ? '↓ ' : '') + (s.p.shortName || s.p.name) + ' · ' + s.model,
+      };
+    }).sort((a, b) => a.want - b.want);
     const GAP = 29;
     for (let i = 0; i < labels.length; i++) {
       labels[i].y = i === 0 ? labels[i].want : Math.max(labels[i].want, labels[i - 1].y + GAP);
@@ -349,7 +392,7 @@
     ctx.textAlign = 'left';
     for (const L of labels) {
       const isLead = L.s === leader;
-      const px = xc, py = yOf(L.s.e);
+      const px = xc, py = L.want;
       // punto sulla punta
       ctx.save();
       ctx.fillStyle = L.s.p.color;
@@ -420,7 +463,7 @@
     ctx.fillText('il miglior modello di ogni player · LMArena Elo', W / 2, 168);
 
     const t0 = RACE_END + 0.6;
-    const rowH = 56, top = 212;
+    const rowH = 52, top = 202;
     const xRank = 210, xName = 252, barX = 900, barMax = 590, xElo = barX + barMax + 26;
 
     ranked.forEach((r, i) => {
@@ -454,7 +497,7 @@
       ctx.font = '400 22px ' + FONT;
       ctx.fillText(r.model, nx + nameW(r.p.name) + 18, y + 9);
 
-      const len = barMax * (r.e - 1000) / (EMAX - 1000) * grow;
+      const len = barMax * (r.e - 1000) / (BAR_TOP - 1000) * grow;
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
       roundRect(barX, y - 14, barMax, 27, 7);
       ctx.fill();
@@ -475,7 +518,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = GOLD;
       ctx.font = '600 40px ' + FONT;
-      ctx.fillText('…e la gara continua.', W / 2, 1002);
+      ctx.fillText('…e la gara continua.', W / 2, 996);
     }
 
     ctx.globalAlpha = alpha * 0.75;
