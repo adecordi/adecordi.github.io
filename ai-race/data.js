@@ -187,6 +187,14 @@ window.AIRACE_DATA = {
         { d: '2025-11-13', m: 'ERNIE 5.0',       elo: 1462 },
       ],
     },
+    {
+      // Emma non e mai stata misurata su LMArena: il valore e una STIMA, coerente
+      // con le prove pubbliche del giugno 2026 (demo sospesa dopo tre giorni).
+      id: 'egomnia', name: 'Egomnia (Emma)', shortName: 'Emma', flag: '🇮🇹', color: '#5bd672',
+      releases: [
+        { d: '2026-06-23', m: 'Emma-5 (stima)', elo: 1050 },
+      ],
+    },
   ],
 
   // Callout mostrati durante la gara (data di attivazione + titolo + nota)
@@ -202,5 +210,6 @@ window.AIRACE_DATA = {
     { d: '2025-11-18', title: 'Gemini 3 & Grok 4.1',    note: 'Google in testa, Microsoft entra con MAI-1' },
     { d: '2026-02-19', title: 'Il 2026 stringe la gara', note: 'Gemini 3.1, GPT-5.5, Opus 4.8: quota 1500 cade' },
     { d: '2026-06-09', title: 'Claude Fable 5',         note: 'nuovo n.1 in Arena — distacchi mai così piccoli' },
+    { d: '2026-07-28', title: 'Emma, l’IA italiana',    note: 'lanciata a giugno da Egomnia, demo sospesa dopo 3 giorni' },
   ],
 };
