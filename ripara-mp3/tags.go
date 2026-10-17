@@ -26,6 +26,7 @@ type songTags struct {
 	Picture                           []byte
 	Format                            string
 	HasV1                             bool
+	Compilation                       bool // flag "compilation" di iTunes (TCMP)
 }
 
 // --- Lettura -----------------------------------------------------------------
@@ -46,6 +47,11 @@ func readTags(b []byte) (raw, t songTags) {
 			raw.Track, raw.TrackTotal = m.Track()
 			raw.Disc, raw.DiscTotal = m.Disc()
 			var front, other []byte
+			for _, k := range []string{"TCMP", "TCP"} {
+				if v, ok := m.Raw()[k].(string); ok && strings.TrimSpace(v) == "1" {
+					raw.Compilation = true
+				}
+			}
 			for k, v := range m.Raw() {
 				switch x := v.(type) {
 				case *tag.Picture:
@@ -359,6 +365,21 @@ func capitalizeFirst(w string) string {
 		}
 	}
 	return w
+}
+
+func isVariousArtists(s string) bool {
+	switch normKey(s) {
+	case "various artists", "various", "artisti vari", "va", "v a", "aa vv", "aavv", "autori vari", "vari", "compilation", "various artist":
+		return true
+	}
+	return false
+}
+
+var reCompilationTitle = regexp.MustCompile(`(?i)\b(greatest hits|best of|the best|very best|collection|anthology|compilation|festivalbar|sanremo|hit ?mania|now that'?s what i call|the essential|essential|gold|platinum|raccolta|il meglio|i successi|grandi successi|successi|top hits|hits? \d{2,4}|hits? of|summer hits|love songs|number ones|singles|vol(ume)?\.? ?\d+|playlist)\b`)
+
+// looksLikeCompilationTitle riconosce i titoli tipici delle raccolte.
+func looksLikeCompilationTitle(album string) bool {
+	return album != "" && reCompilationTitle.MatchString(album)
 }
 
 func isJunkTitle(s string) bool {

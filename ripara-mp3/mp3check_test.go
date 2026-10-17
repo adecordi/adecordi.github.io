@@ -67,7 +67,7 @@ func genFiles(t *testing.T) string {
 func encode(out string, freq, seconds int, args ...string) error {
 	a := []string{"-hide_banner", "-loglevel", "error", "-y",
 		"-f", "lavfi", "-i", "sine=frequency=" + itoa(freq) + ":duration=" + itoa(seconds),
-		"-f", "lavfi", "-i", "anoisesrc=d=" + itoa(seconds) + ":c=pink:a=0.25",
+		"-f", "lavfi", "-i", "anoisesrc=d=" + itoa(seconds) + ":c=pink:a=0.25:seed=" + itoa(freq),
 		"-filter_complex", "[0:a][1:a]amix=inputs=2,volume=2[a]", "-map", "[a]"}
 	a = append(a, args...)
 	a = append(a, out)
@@ -249,7 +249,7 @@ func TestTagsRoundTrip(t *testing.T) {
 		os.WriteFile(f, out.Bytes(), 0o644)
 		o, _ := exec.Command("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-show_entries", "stream=codec_name,width", "-of", "default=nw=1", f).Output()
 		s := string(o)
-		for _, w := range []string{"title=Perché no", "artist=Lucio Battisti", "album=Ελληνικά", "codec_name=mjpeg", "width=500"} {
+		for _, w := range []string{"title=Perché no", "artist=Lucio Battisti", "album=Ελληνικά", "codec_name=mjpeg", "width=600"} {
 			if !strings.Contains(s, w) {
 				t.Errorf("ffprobe non legge %q:\n%s", w, s)
 			}

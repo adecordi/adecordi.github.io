@@ -52,6 +52,11 @@ type song struct {
 	origCoverID  string
 	coverResized bool
 	coverSource  string
+	fallback     string // copertina già disponibile, se non si trova di meglio
+	compilation  bool   // l'album nei tag è una raccolta
+	albumFrom    string // album dei tag prima di essere corretto
+	mbAlbum      string // album scelto da MusicBrainz e suoi identificativi
+	mbRG, mbRel  string
 	fromName     bool
 	incomplete   bool
 	mbFound      bool
@@ -368,8 +373,20 @@ func samePath(a, b string) bool {
 
 func (s *song) needsLookup() bool {
 	return s.status != stAlt && s.final.Artist != "" && s.final.Title != "" &&
-		(s.final.Album == "" || s.final.Year == 0 || s.coverID == "" ||
+		(s.final.Album == "" || s.final.Year == 0 || s.compilation ||
 			strings.ToUpper(s.final.Artist) == s.final.Artist || strings.ToUpper(s.final.Title) == s.final.Title)
+}
+
+// replaceAlbum sostituisce l'album di una raccolta con quello originale.
+func (s *song) replaceAlbum(album string, year, track, total int) {
+	t := &s.final
+	if s.albumFrom == "" {
+		s.albumFrom = t.Album
+	}
+	t.Album, t.AlbumArtist = album, ""
+	t.Year, t.Track, t.TrackTotal = year, track, total
+	t.Disc, t.DiscTotal = 0, 0
+	s.compilation = false
 }
 
 func (s *song) applyMB(r *mbResult) {
@@ -384,6 +401,13 @@ func (s *song) applyMB(r *mbResult) {
 	if normKey(r.Title) == normKey(t.Title) {
 		t.Title = r.Title
 	}
+	if t.Album != "" && contains(r.CompTitles, normKey(stripParens(t.Album))) {
+		// per MusicBrainz l'album dei tag è una raccolta
+		s.compilation = true
+	}
+	if s.compilation && r.Album != "" && !r.AlbumIsComp && albumMatchKey(r.Album) != albumMatchKey(t.Album) {
+		s.replaceAlbum(r.Album, r.Year, r.Track, r.TrackTotal)
+	}
 	if t.Album == "" && r.Album != "" {
 		t.Album = r.Album
 		if t.Track == 0 {
@@ -393,6 +417,127 @@ func (s *song) applyMB(r *mbResult) {
 	if t.Year == 0 {
 		t.Year = r.Year
 	}
+	if albumMatchKey(r.Album) == albumMatchKey(t.Album) {
+		s.mbAlbum, s.mbRG, s.mbRel = r.Album, r.ReleaseGroup, r.Release
+	}
+}
+
+// markCompilations riconosce gli album che sono raccolte: artista
+// dell'album "Artisti vari", flag compilation, titoli tipici o lo stesso
+// album con tre o più artisti diversi.
+func markCompilations(songs []*song) {
+	artists := map[string]map[string]bool{}
+	for _, s := range songs {
+		if k := albumMatchKey(s.final.Album); k != "" {
+			if artists[k] == nil {
+				artists[k] = map[string]bool{}
+			}
+			artists[k][normKey(s.final.Artist)] = true
+		}
+	}
+	for _, s := range songs {
+		t := s.final
+		s.compilation = t.Album != "" && s.status != stAlt &&
+			(isVariousArtists(t.AlbumArtist) || s.tags.Compilation || looksLikeCompilationTitle(t.Album) ||
+				len(artists[albumMatchKey(t.Album)]) >= 3)
+	}
+}
+
+// coverArtist è l'artista con cui cercare la copertina dell'album.
+func coverArtist(t songTags) string {
+	if t.AlbumArtist != "" && !isVariousArtists(t.AlbumArtist) {
+		return t.AlbumArtist
+	}
+	return t.Artist
+}
+
+// assignCovers cerca online le copertine ufficiali, una ricerca per album.
+// Con replaceAll anche le copertine già presenti vengono sostituite.
+func assignCovers(songs []*song, art *artFinder, covers *coverStore, replaceAll bool, progress func(i, n int, name string)) (found int) {
+	groups := map[string][]*song{}
+	var keys []string
+	var byTrack []*song
+	for _, s := range songs {
+		if s.status == stAlt || s.status == stBad || s.dup || s.final.Artist == "" {
+			continue
+		}
+		if !replaceAll && s.coverID != "" && !s.compilation {
+			continue
+		}
+		if s.final.Album == "" || s.compilation {
+			byTrack = append(byTrack, s)
+			continue
+		}
+		k := normKey(coverArtist(s.final)) + "|" + albumMatchKey(s.final.Album)
+		if groups[k] == nil {
+			keys = append(keys, k)
+		}
+		groups[k] = append(groups[k], s)
+	}
+	sort.Strings(keys)
+	total := len(byTrack) + len(keys)
+	n := 0
+	// brani senza album o in una raccolta: si cerca l'album originale
+	for _, s := range byTrack {
+		n++
+		if progress != nil {
+			progress(n, total, s.displayName())
+		}
+		if art.offline() {
+			break
+		}
+		r := art.trackAlbum(s.final.Artist, s.final.Title, s.info.Duration)
+		if r == nil {
+			if s.final.Album != "" {
+				// raccolta senza alternativa: si cerca almeno la copertina
+				k := normKey(coverArtist(s.final)) + "|" + albumMatchKey(s.final.Album)
+				if groups[k] == nil {
+					keys = append(keys, k)
+				}
+				groups[k] = append(groups[k], s)
+			}
+			continue
+		}
+		if s.compilation {
+			s.replaceAlbum(r.Album, r.Year, 0, 0)
+		} else {
+			s.final.Album = r.Album
+			if s.final.Year == 0 {
+				s.final.Year = r.Year
+			}
+		}
+		s.coverID, s.coverSource = covers.add(r.Cover), r.Source
+		found++
+	}
+	total = len(byTrack) + len(keys)
+	for _, k := range keys {
+		n++
+		g := groups[k]
+		rep := g[0]
+		if progress != nil {
+			progress(n, total, coverArtist(rep.final)+" - "+rep.final.Album)
+		}
+		if art.offline() {
+			break
+		}
+		rg, rel := "", ""
+		for _, s := range g {
+			if s.mbRG != "" {
+				rg, rel = s.mbRG, s.mbRel
+				break
+			}
+		}
+		img, src := art.albumCover(coverArtist(rep.final), rep.final.Album, rg, rel)
+		if img == nil {
+			continue
+		}
+		id := covers.add(img)
+		for _, s := range g {
+			s.coverID, s.coverSource = id, src
+		}
+		found += len(g)
+	}
+	return found
 }
 
 func albumKey(t songTags) string {
@@ -424,8 +569,8 @@ func shareCovers(songs []*song) {
 	}
 }
 
-// folderCovers usa le immagini trovate nelle cartelle (cover.jpg, folder.jpg
-// ...) solo se la cartella contiene un unico album.
+// folderCovers propone come ripiego le immagini trovate nelle cartelle
+// (cover.jpg, folder.jpg ...), solo se la cartella contiene un unico album.
 func folderCovers(songs []*song, covers *coverStore) {
 	byDir := map[string][]*song{}
 	for _, s := range songs {
@@ -451,7 +596,7 @@ func folderCovers(songs []*song, covers *coverStore) {
 		var id string
 		loaded := false
 		for _, s := range list {
-			if s.coverID != "" || albumKey(s.final) != best {
+			if s.fallback != "" || albumKey(s.final) != best {
 				continue
 			}
 			if !loaded {
@@ -459,8 +604,7 @@ func folderCovers(songs []*song, covers *coverStore) {
 				loaded = true
 			}
 			if id != "" {
-				s.coverID = id
-				s.coverSource = "cartella"
+				s.fallback = id
 			}
 		}
 	}

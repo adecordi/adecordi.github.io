@@ -2,11 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,12 +12,9 @@ import (
 	"time"
 )
 
-// Ricerca di album, anno, numero di traccia e copertina su MusicBrainz
-// (https://musicbrainz.org) e sul Cover Art Archive. Le regole del servizio
-// chiedono al massimo una richiesta al secondo e uno User-Agent che
-// identifichi il programma.
-
-const userAgent = "RiparaMP3/1.0 ( https://github.com/adecordi/adecordi.github.io )"
+// Ricerca di album, anno e numero di traccia su MusicBrainz
+// (https://musicbrainz.org). Le regole del servizio chiedono al massimo una
+// richiesta al secondo e uno User-Agent che identifichi il programma.
 
 // mbMinInterval è la pausa minima fra due richieste a MusicBrainz.
 var mbMinInterval = 1100 * time.Millisecond
@@ -36,27 +29,23 @@ type mbResult struct {
 	TrackTotal   int       `json:"track_total,omitempty"`
 	ReleaseGroup string    `json:"release_group,omitempty"`
 	Release      string    `json:"release,omitempty"`
+	AlbumIsComp  bool      `json:"album_is_comp,omitempty"`
+	CompTitles   []string  `json:"comp_titles,omitempty"` // raccolte che contengono il brano (normalizzate)
 	Checked      time.Time `json:"checked"`
 }
 
 type mbClient struct {
-	base, caa string
-	http      *http.Client
-	last      time.Time
+	base      string
+	web       *webClient
 	cacheFile string
-	coverDir  string
 	cache     map[string]*mbResult
-	offline   bool
-	failures  int
 }
 
-func newMBClient(base, caa, cacheDir string) *mbClient {
+func newMBClient(base, cacheDir string) *mbClient {
 	c := &mbClient{
 		base:      strings.TrimRight(base, "/"),
-		caa:       strings.TrimRight(caa, "/"),
-		http:      &http.Client{Timeout: 25 * time.Second},
-		cacheFile: filepath.Join(cacheDir, "musicbrainz.json"),
-		coverDir:  filepath.Join(cacheDir, "copertine"),
+		web:       newWebClient(mbMinInterval),
+		cacheFile: filepath.Join(cacheDir, "musicbrainz-v2.json"),
 		cache:     map[string]*mbResult{},
 	}
 	if b, err := os.ReadFile(c.cacheFile); err == nil {
@@ -70,45 +59,6 @@ func (c *mbClient) save() {
 	if b, err := json.MarshalIndent(c.cache, "", " "); err == nil {
 		os.WriteFile(c.cacheFile, b, 0o644)
 	}
-}
-
-var errNotFound = errors.New("non trovato")
-
-func (c *mbClient) get(u string, rateLimited bool) ([]byte, error) {
-	for attempt := 0; attempt < 4; attempt++ {
-		if rateLimited {
-			if d := time.Until(c.last.Add(mbMinInterval)); d > 0 {
-				time.Sleep(d)
-			}
-			c.last = time.Now()
-		}
-		req, _ := http.NewRequest("GET", u, nil)
-		req.Header.Set("User-Agent", userAgent)
-		req.Header.Set("Accept", "application/json")
-		resp, err := c.http.Do(req)
-		if err != nil {
-			c.failures++
-			if c.failures >= 3 {
-				c.offline = true
-			}
-			return nil, err
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-		resp.Body.Close()
-		switch {
-		case resp.StatusCode == http.StatusOK && err == nil:
-			c.failures = 0
-			return body, nil
-		case resp.StatusCode == http.StatusNotFound:
-			return nil, errNotFound
-		case resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-			time.Sleep(time.Duration(2+2*attempt) * time.Second)
-			continue
-		default:
-			return nil, fmt.Errorf("risposta %d", resp.StatusCode)
-		}
-	}
-	return nil, errors.New("servizio non disponibile")
 }
 
 type mbArtistCredit []struct {
@@ -129,10 +79,11 @@ func (ac mbArtistCredit) String() string {
 }
 
 type mbRelease struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Status       string `json:"status"`
-	Date         string `json:"date"`
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Status       string         `json:"status"`
+	Date         string         `json:"date"`
+	ArtistCredit mbArtistCredit `json:"artist-credit"`
 	ReleaseGroup struct {
 		ID             string   `json:"id"`
 		PrimaryType    string   `json:"primary-type"`
@@ -170,10 +121,17 @@ func cacheKey(artist, title string) string {
 	return normKey(artist) + "|" + normKey(stripParens(title))
 }
 
+// isCompilationRelease: raccolte di più artisti o "greatest hits".
+func isCompilationRelease(r mbRelease) bool {
+	return contains(r.ReleaseGroup.SecondaryTypes, "Compilation") || isVariousArtists(r.ArtistCredit.String())
+}
+
 func releaseRank(r mbRelease) int {
 	rank := 5
 	sec := r.ReleaseGroup.SecondaryTypes
 	switch {
+	case isVariousArtists(r.ArtistCredit.String()):
+		rank = 3
 	case r.ReleaseGroup.PrimaryType == "Album" && len(sec) == 0:
 		rank = 0
 	case (r.ReleaseGroup.PrimaryType == "Single" || r.ReleaseGroup.PrimaryType == "EP") && len(sec) == 0:
@@ -214,11 +172,8 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 	if r, ok := c.cache[key]; ok && (r.Found || time.Since(r.Checked) < 30*24*time.Hour) {
 		return r, nil
 	}
-	if c.offline {
-		return nil, errors.New("internet non disponibile")
-	}
 	q := "recording:" + luceneQuote(stripParens(title)) + " AND artist:" + luceneQuote(artist)
-	body, err := c.get(c.base+"/ws/2/recording?fmt=json&limit=25&query="+url.QueryEscape(q), true)
+	body, err := c.web.get(c.base + "/ws/2/recording?fmt=json&limit=25&query=" + url.QueryEscape(q))
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +209,13 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 		}
 		releases = append(releases, rec.Releases...)
 	}
+	for _, r := range releases {
+		if isCompilationRelease(r) {
+			if k := normKey(stripParens(r.Title)); k != "" && !contains(out.CompTitles, k) {
+				out.CompTitles = append(out.CompTitles, k)
+			}
+		}
+	}
 	if out.Found && len(releases) > 0 {
 		// anno: la prima uscita ufficiale del brano
 		for _, r := range releases {
@@ -275,6 +237,7 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 		})
 		best := releases[0]
 		out.Album = best.Title
+		out.AlbumIsComp = isCompilationRelease(best)
 		out.ReleaseGroup = best.ReleaseGroup.ID
 		out.Release = best.ID
 		if len(best.Media) > 0 {
@@ -293,41 +256,4 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 	}
 	c.cache[key] = out
 	return out, nil
-}
-
-// cover scarica la copertina dell'album dal Cover Art Archive (500 pixel).
-func (c *mbClient) cover(r *mbResult) []byte {
-	if r == nil || r.ReleaseGroup == "" {
-		return nil
-	}
-	os.MkdirAll(c.coverDir, 0o755)
-	file := filepath.Join(c.coverDir, r.ReleaseGroup+".jpg")
-	none := filepath.Join(c.coverDir, r.ReleaseGroup+".none")
-	if b, err := os.ReadFile(file); err == nil {
-		return b
-	}
-	if st, err := os.Stat(none); err == nil && time.Since(st.ModTime()) < 30*24*time.Hour {
-		return nil
-	}
-	if c.offline {
-		return nil
-	}
-	urls := []string{c.caa + "/release-group/" + r.ReleaseGroup + "/front-500"}
-	if r.Release != "" {
-		urls = append(urls, c.caa+"/release/"+r.Release+"/front-500")
-	}
-	for _, u := range urls {
-		b, err := c.get(u, false)
-		if err == nil && len(b) > 0 {
-			if img, err := normalizeCover(b); err == nil {
-				os.WriteFile(file, img, 0o644)
-				return img
-			}
-		}
-		if err != nil && !errors.Is(err, errNotFound) {
-			return nil
-		}
-	}
-	os.WriteFile(none, nil, 0o644)
-	return nil
 }
