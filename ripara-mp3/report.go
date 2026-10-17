@@ -40,11 +40,18 @@ func reportStatus(s *song) (string, string) {
 	if s.err != "" && (s.status == stHD || s.status == stRip) {
 		return stBad, "Non è stato possibile sostituirlo: " + s.err + ". Problemi: " + problems + "."
 	}
+	if !s.applied && (s.status == stHD || s.status == stRip) {
+		return stBad, "Non ancora sistemato: l'operazione è stata interrotta. Problemi: " + problems + "."
+	}
 	switch s.status {
 	case stHD:
 		return stHD, "Sostituito con la copia sana trovata in " + s.hdPath + "."
 	case stRip:
-		return stRip, "Tolte le parti rovinate (" + humanBytes(int64(s.removed)) + "): " + problems + "."
+		note := "Tolte le parti rovinate (" + humanBytes(int64(s.removed)) + "): " + problems + "."
+		if s.readErrors > 0 {
+			note += " L'originale illeggibile è stato spostato nella cartella _Rovinati."
+		}
+		return stRip, note
 	case stBad:
 		return stBad, capitalizeFirst(problems) + ". Copia sana non trovata sull'hard disk."
 	case stAlt:

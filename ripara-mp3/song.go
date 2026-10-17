@@ -56,10 +56,13 @@ type song struct {
 	incomplete   bool
 	mbFound      bool
 
-	target    string
-	dup       bool
-	needWrite bool
-	err       string
+	target     string
+	dup        bool
+	needWrite  bool
+	applied    bool   // le modifiche previste sono state fatte
+	parkedFrom string // percorso prima di un nome temporaneo (scambi di nome)
+	warn       string
+	err        string
 }
 
 func (s *song) displayName() string {
@@ -84,7 +87,7 @@ func listStick(root string) ([]*song, error) {
 		lower := strings.ToLower(name)
 		if d.IsDir() {
 			if p != root && (strings.HasPrefix(name, ".") || strings.HasPrefix(name, "$") ||
-				lower == "system volume information" || lower == "_doppioni" || strings.HasPrefix(lower, "riparamp3 backup")) {
+				lower == "system volume information" || lower == "_doppioni" || lower == "_rovinati" || strings.HasPrefix(lower, "riparamp3 backup")) {
 				return fs.SkipDir
 			}
 			return nil
@@ -209,6 +212,26 @@ func (s *song) readSource() ([]byte, error) {
 		return nil, errors.New("la chiavetta restituisce dati diversi a ogni lettura (lettura instabile)")
 	}
 	return data, nil
+}
+
+// freshRead rilegge il file dalla chiavetta (fino a tre volte) per i file
+// che avevano blocchi illeggibili: a volte una seconda lettura riesce.
+func (s *song) freshRead() ([]byte, int) {
+	var best []byte
+	bestBad := -1
+	for i := 0; i < 3; i++ {
+		data, bad, err := readTolerant(s.path)
+		if err != nil {
+			continue
+		}
+		if bestBad < 0 || bad < bestBad {
+			best, bestBad = data, bad
+		}
+		if bad == 0 {
+			break
+		}
+	}
+	return best, bestBad
 }
 
 // --- Tag finali ---------------------------------------------------------------
@@ -485,11 +508,20 @@ func planTargets(root string, songs []*song) {
 			s.dup = true
 		}
 	}
+	named := map[*song]bool{}
+	for _, s := range songs {
+		cur := strings.TrimSuffix(filepath.Base(s.path), filepath.Ext(s.path))
+		named[s] = samePath(filepath.Dir(s.path), root) && strings.EqualFold(cur, safeFileName(s.displayName(), 120))
+	}
 	ordered := append([]*song(nil), songs...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		a, b := ordered[i], ordered[j]
 		if a.dup != b.dup {
 			return !a.dup
+		}
+		if named[a] != named[b] {
+			// alla seconda esecuzione chi ha già il nome giusto lo tiene
+			return named[a]
 		}
 		if qa, qb := songQuality(a), songQuality(b); qa != qb {
 			return qa > qb
@@ -561,9 +593,25 @@ func (s *song) buildContent(covers *coverStore) ([]byte, error) {
 		}
 		payload = audioPayload(data, in)
 	case stRip:
-		data, err := s.readSource()
-		if err != nil {
-			return nil, err
+		var data []byte
+		if s.readErrors > 0 {
+			// la copia di sicurezza ha zeri al posto dei blocchi illeggibili:
+			// meglio riprovare a leggere la chiavetta
+			fresh, bad := s.freshRead()
+			if fresh != nil && bad == 0 {
+				if in := analyzeMP3(fresh, 0); !in.Defective && in.Format == "" {
+					s.status, s.info, s.readErrors = stOK, in, 0
+					payload = audioPayload(fresh, in)
+					break
+				}
+			}
+			data = fresh
+		}
+		if data == nil {
+			var err error
+			if data, err = s.readSource(); err != nil {
+				return nil, err
+			}
 		}
 		p, removed, err := repairPayload(data)
 		if err != nil {
@@ -642,54 +690,108 @@ func exists(p string) bool {
 	return err == nil
 }
 
+// renameFn e removeFn sono os.Rename e os.Remove; i test le sostituiscono
+// per simulare errori.
+var (
+	renameFn = os.Rename
+	removeFn = os.Remove
+)
+
+func rename(a, b string) error { return retry(func() error { return renameFn(a, b) }) }
+
 func sameFile(a, b string) bool {
 	if filepath.Clean(a) == filepath.Clean(b) {
 		return true
+	}
+	if !samePath(a, b) {
+		return false
 	}
 	fa, err1 := os.Stat(a)
 	fb, err2 := os.Stat(b)
 	return err1 == nil && err2 == nil && os.SameFile(fa, fb)
 }
 
-// replaceFile scrive il nuovo contenuto in `target` e toglie il file vecchio.
-func replaceFile(old, target string, content []byte) error {
+// replaceFile scrive il nuovo contenuto in `target` al posto di `old`.
+// L'originale non viene mai tolto prima che il file nuovo sia al suo posto:
+// se qualcosa va storto resta intatto. Se keep non è vuoto, il file vecchio
+// viene spostato lì invece di essere cancellato. warn segnala problemi che
+// non impediscono la sostituzione.
+func replaceFile(old, target string, content []byte, keep string) (warn string, err error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
+		return "", err
 	}
 	tmp := tempPath(filepath.Dir(target))
 	if err := writeVerified(tmp, content); err != nil {
 		os.Remove(tmp)
-		return err
+		return "", err
 	}
-	same := sameFile(old, target)
-	if same {
-		if err := retry(func() error { return os.Remove(old) }); err != nil {
+	exact := filepath.Clean(old) == filepath.Clean(target)
+	switch {
+	case exact && keep == "":
+		// sostituzione in un colpo solo: se non riesce l'originale resta
+		if err := rename(tmp, target); err != nil {
 			os.Remove(tmp)
-			return err
+			return "", err
 		}
-	}
-	if err := retry(func() error { return os.Rename(tmp, target) }); err != nil {
-		return fmt.Errorf("%v (il contenuto nuovo è salvato in %s)", err, tmp)
-	}
-	if !same {
-		if err := retry(func() error { return os.Remove(old) }); err != nil {
-			return fmt.Errorf("il file nuovo è stato scritto ma il vecchio non si cancella: %v", err)
+		return "", nil
+	case exact || keep != "" || sameFile(old, target):
+		// il vecchio file viene prima messo da parte, poi il nuovo prende il
+		// suo posto; se non riesce il vecchio torna dov'era
+		park := keep
+		if park == "" {
+			park = tempPath(filepath.Dir(old))
+		} else {
+			os.MkdirAll(filepath.Dir(park), 0o755)
+			if exists(park) {
+				park = freeName(park)
+			}
 		}
+		if err := rename(old, park); err != nil {
+			os.Remove(tmp)
+			return "", err
+		}
+		if err := rename(tmp, target); err != nil {
+			renameFn(park, old)
+			os.Remove(tmp)
+			return "", err
+		}
+		if keep == "" {
+			if err := retry(func() error { return removeFn(park) }); err != nil {
+				return "la versione vecchia è rimasta in " + park, nil
+			}
+		}
+		return "", nil
+	default:
+		// il nome nuovo è libero (lo controlla chi chiama)
+		if err := rename(tmp, target); err != nil {
+			os.Remove(tmp)
+			return "", err
+		}
+		if err := retry(func() error { return removeFn(old) }); err != nil {
+			return "non è stato possibile cancellare la versione vecchia " + old, nil
+		}
+		return "", nil
 	}
-	return nil
 }
 
 func moveFile(old, target string) error {
+	if filepath.Clean(old) == filepath.Clean(target) {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
 	if sameFile(old, target) {
 		// cambia solo maiuscole/minuscole: serve un passaggio intermedio
 		tmp := tempPath(filepath.Dir(target))
-		if err := retry(func() error { return os.Rename(old, tmp) }); err != nil {
+		if err := rename(old, tmp); err != nil {
 			return err
 		}
-		return retry(func() error { return os.Rename(tmp, target) })
+		if err := rename(tmp, target); err != nil {
+			renameFn(tmp, old)
+			return err
+		}
+		return nil
 	}
-	return retry(func() error { return os.Rename(old, target) })
+	return rename(old, target)
 }

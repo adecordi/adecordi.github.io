@@ -112,7 +112,7 @@ func buildHDIndex(roots, exclude []string, progress func(dirs, mp3s int, dir str
 				}
 				return nil
 			}
-			if !strings.EqualFold(filepath.Ext(p), ".mp3") || !d.Type().IsRegular() {
+			if !strings.EqualFold(filepath.Ext(p), ".mp3") || d.Type()&fs.ModeSymlink != 0 {
 				return nil
 			}
 			info, err := d.Info()
@@ -207,7 +207,10 @@ func (idx *hdIndex) buildTagIndex() {
 			go func() {
 				defer wg.Done()
 				for f := range ch {
-					f.loadTags()
+					func() {
+						defer func() { recover() }()
+						f.loadTags()
+					}()
 				}
 			}()
 		}
@@ -246,11 +249,15 @@ func (idx *hdIndex) findGoodCopy(s *song) *hdMatch {
 	}
 	nameKey, loose, filePair := fileKeys(s.path)
 	tagKeys := []string{pairKey(s.tags.Artist, s.tags.Title), pairKey(s.final.Artist, s.final.Title)}
-	for _, k := range append([]string{nameKey, loose, filePair}, tagKeys...) {
+	byPair := map[*hdFile]bool{}
+	for i, k := range []string{filePair, tagKeys[0], tagKeys[1], nameKey, loose} {
 		if k == "" {
 			continue
 		}
 		for _, f := range idx.byKey[k] {
+			if i < 3 && f.pairKey == k {
+				byPair[f] = true
+			}
 			if !seen[f] {
 				seen[f] = true
 				byName = append(byName, f)
@@ -259,6 +266,15 @@ func (idx *hdIndex) findGoodCopy(s *song) *hdMatch {
 	}
 	var best *hdMatch
 	consider := func(f *hdFile, needSimilar bool) {
+		if s.info.Frames == 0 {
+			// del file della chiavetta non resta audio da confrontare: si
+			// accetta solo una copia con lo stesso artista e titolo e una
+			// dimensione simile
+			ratio := float64(f.size) / float64(s.size)
+			if !byPair[f] || ratio < 0.85 || ratio > 1.15 {
+				return
+			}
+		}
 		data, err := os.ReadFile(f.path)
 		if err != nil {
 			return
@@ -303,6 +319,7 @@ func (idx *hdIndex) findGoodCopy(s *song) *hdMatch {
 			for _, f := range idx.byTag[k] {
 				if k != "" && !seen[f] {
 					seen[f] = true
+					byPair[f] = true
 					consider(f, false)
 				}
 			}

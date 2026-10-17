@@ -22,13 +22,16 @@ func applyAll(root string, songs []*song, covers *coverStore, lg *logger, progre
 	}
 	total, done := len(pending), 0
 	dirs := map[string]bool{}
+	defer func() {
+		restoreParked(root, songs, lg)
+		removeEmptyDirs(root, dirs)
+	}()
 	for len(pending) > 0 {
 		var rest []*song
 		progressed := false
 		for i, s := range pending {
 			if stopRequested.Load() {
 				lg.add("INTERROTTO", "%d file non sistemati", len(pending)-i+len(rest))
-				removeEmptyDirs(root, dirs)
 				return
 			}
 			if exists(s.target) && !sameFile(s.path, s.target) {
@@ -55,20 +58,44 @@ func applyAll(root string, songs []*song, covers *coverStore, lg *logger, progre
 			progressed = true
 		}
 		if !progressed && len(rest) > 0 {
-			// due brani che si scambiano il nome: uno passa da un nome temporaneo
+			// brani che si scambiano il nome: uno passa da un nome temporaneo
 			s := rest[0]
 			tmp := tempPath(filepath.Dir(s.path))
-			if err := os.Rename(s.path, tmp); err != nil {
+			if err := rename(s.path, tmp); err != nil {
 				s.err = err.Error()
 				lg.add("ERRORE", "%s: %v", relPath(root, s.path), err)
 				rest = rest[1:]
 			} else {
-				s.path = tmp
+				dirs[filepath.Dir(s.path)] = true
+				s.parkedFrom, s.path = s.path, tmp
 			}
 		}
 		pending = rest
 	}
-	removeEmptyDirs(root, dirs)
+}
+
+// restoreParked rimette al loro nome i brani rimasti con un nome temporaneo
+// (per un'interruzione o un errore).
+func restoreParked(root string, songs []*song, lg *logger) {
+	for _, s := range songs {
+		if s.parkedFrom == "" || s.applied {
+			continue
+		}
+		dest := s.parkedFrom
+		if exists(dest) {
+			if s.target != "" && !exists(s.target) {
+				dest = s.target
+			} else {
+				dest = freeName(s.parkedFrom)
+			}
+		}
+		if err := rename(s.path, dest); err != nil {
+			lg.add("ERRORE", "%s è rimasto con il nome temporaneo %s", s.origRel, relPath(root, s.path))
+			continue
+		}
+		s.path = dest
+		s.parkedFrom = ""
+	}
 }
 
 func applyOne(root string, s *song, covers *coverStore, lg *logger) {
@@ -76,14 +103,26 @@ func applyOne(root string, s *song, covers *coverStore, lg *logger) {
 	newRel := relPath(root, s.target)
 	if s.needWrite {
 		content, err := s.buildContent(covers)
+		warn := ""
 		if err == nil {
-			err = replaceFile(s.path, s.target, content)
+			keep := ""
+			if s.status == stRip && s.readErrors > 0 {
+				// l'originale ha settori illeggibili: lo si conserva a parte
+				keep = filepath.Join(root, "_Rovinati", filepath.Base(s.origRel))
+			}
+			warn, err = replaceFile(s.path, s.target, content, keep)
+			if err == nil && keep != "" {
+				lg.add("CONSERVATO", "originale illeggibile spostato in _Rovinati: %s", filepath.Base(s.origRel))
+			}
 		}
 		if err != nil {
 			s.err = err.Error()
-			s.target = s.path
 			lg.add("ERRORE", "%s: %v", oldRel, err)
 			return
+		}
+		if warn != "" {
+			s.warn = warn
+			lg.add("ATTENZIONE", "%s: %s", newRel, warn)
 		}
 		s.outInfo = analyzeMP3(content, 0)
 		s.size = int64(len(content))
@@ -104,7 +143,6 @@ func applyOne(root string, s *song, covers *coverStore, lg *logger) {
 	} else {
 		if err := moveFile(s.path, s.target); err != nil {
 			s.err = err.Error()
-			s.target = s.path
 			lg.add("ERRORE", "%s: %v", oldRel, err)
 			return
 		}
@@ -115,6 +153,7 @@ func applyOne(root string, s *song, covers *coverStore, lg *logger) {
 		lg.add(kind, "%s -> %s", s.origRel, newRel)
 	}
 	s.path = s.target
+	s.applied = true
 }
 
 func relPath(root, p string) string {
@@ -140,7 +179,7 @@ func freeName(target string) string {
 func removeEmptyDirs(root string, dirs map[string]bool) {
 	var list []string
 	for d := range dirs {
-		for d != "" && !samePath(d, root) && strings.HasPrefix(strings.ToLower(d), strings.ToLower(filepath.Clean(root))) {
+		for d != "" && !samePath(d, root) && isUnder(d, []string{root}) {
 			list = append(list, d)
 			parent := filepath.Dir(d)
 			if parent == d {
