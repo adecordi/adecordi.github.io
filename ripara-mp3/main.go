@@ -238,7 +238,7 @@ func chooseStick(o options, u *ui) (string, bool, error) {
 		p := cleanPath(a)
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
 			for _, d := range removable {
-				if samePath(d.root, p) {
+				if isUnder(p, []string{d.root}) {
 					return p, true, nil
 				}
 			}
@@ -278,8 +278,8 @@ func run(o options, u *ui) error {
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
 		return fmt.Errorf("la cartella %s non esiste", root)
 	}
-	if !isRemovable && o.stick == "" && filepath.Dir(root) == root {
-		fmt.Printf("\nAttenzione: %s non risulta una chiavetta. Tutti gli mp3 che contiene verranno\nrinominati e spostati nella cartella principale.\n", root)
+	if !isRemovable && o.stick == "" {
+		fmt.Printf("\nAttenzione: %s non risulta una chiavetta. Tutti gli mp3 che contiene, anche nelle\nsottocartelle, verranno rinominati e spostati direttamente in %s.\n", root, root)
 		if !u.yesNo("Sei sicuro di voler continuare?", false) {
 			return nil
 		}
@@ -310,7 +310,10 @@ func run(o options, u *ui) error {
 				return nil
 			}
 		} else if u.yesNo("Prima di modificare la chiavetta faccio una copia di sicurezza sul PC (consigliato). Va bene?", true) {
-			backupRoot = filepath.Join(base, "RiparaMP3 backup "+time.Now().Format("2006-01-02 15.04"))
+			backupRoot = filepath.Join(base, "RiparaMP3 backup "+time.Now().Format("2006-01-02 15.04.05"))
+			if exists(backupRoot) {
+				backupRoot = freeName(backupRoot)
+			}
 			fmt.Printf("  La copia verrà salvata in: %s\n", backupRoot)
 		}
 	}
@@ -405,7 +408,7 @@ func run(o options, u *ui) error {
 				t.Picture = nil
 				hdTags[s] = &t
 				found++
-			} else if s.info.Repairable {
+			} else if s.info.cuttable() {
 				s.status = stRip
 			}
 			s.payload = nil

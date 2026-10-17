@@ -35,6 +35,7 @@ Alla fine si apre `elenco.html`.
 | `elenco.html` | l'elenco dei brani, da aprire con il browser |
 | `RiparaMP3-registro.txt` | tutte le operazioni fatte: vecchio nome → nuovo nome, file sostituiti e da dove |
 | `_Doppioni` | i brani presenti due volte (audio identico): non vengono cancellati, solo spostati qui |
+| `_Rovinati` | solo se servono: gli originali con settori illeggibili, conservati dopo averne fatto una versione riparata |
 
 Le cartelle rimaste vuote vengono tolte. Quelle che contengono ancora altri file (immagini, documenti) restano dove sono.
 
@@ -59,6 +60,7 @@ La **copia di sicurezza** della chiavetta, così com'era prima, si trova in `Mus
 
 - Un danno molto piccolo (un singolo bit cambiato) si riconosce solo se l'mp3 contiene il codice di controllo LAME. È così nella maggior parte degli mp3 creati con LAME o ffmpeg.
 - Un file tagliato esattamente alla fine di un frame si riconosce solo se ha l'intestazione Xing (quasi tutti gli mp3 recenti la hanno).
+- Quando un tag viene riscritto si conservano titolo, artista, album, artista dell'album, anno, traccia, disco, genere, compositore, commento, testo e copertina. Informazioni particolari come ReplayGain, valutazioni a stelle o identificativi MusicBrainz non vengono riportate (restano nella copia di sicurezza).
 - La ricerca su Internet funziona solo per i brani di cui si conoscono artista e titolo. MusicBrainz permette una ricerca al secondo, quindi per raccolte grandi ci vuole qualche minuto.
 
 ## Opzioni (per utenti esperti)

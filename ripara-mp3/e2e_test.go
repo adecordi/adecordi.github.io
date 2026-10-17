@@ -183,7 +183,18 @@ func TestEndToEnd(t *testing.T) {
 	// una copia rovinata anche sull'hard disk: non deve essere usata
 	write(t, filepath.Join(hd, "Vecchi/Queen - Bohemian Rhapsody.mp3"), corrupt(withTags(bohemian, nil), 2))
 
+	write(t, filepath.Join(hd, "Other Band/Some Album/05 Intro.mp3"), withTags(e.mp3(900, 20, "128k"), &songTags{Artist: "Other Band", Title: "Intro"}))
+
 	// --- chiavetta
+	// file completamente vuoto: non va "recuperato" con un brano diverso
+	write(t, filepath.Join(stick, "Pink Floyd/The Wall/01 - Intro.mp3"), make([]byte, 330000))
+	// un solo bit cambiato e nessuna copia: resta com'è e viene segnalato
+	flipped := withTags(e.mp3(950, 20, "128k"), &songTags{Artist: "Nomadi", Title: "Io vagabondo"})
+	flipped[len(flipped)/2+300] ^= 0x10
+	write(t, filepath.Join(stick, "Varie/flip.mp3"), flipped)
+	// stesso artista e titolo, album e audio diversi
+	write(t, filepath.Join(stick, "love1.mp3"), withTags(e.mp3(980, 20, "128k"), &songTags{Artist: "Queen", Title: "Love of My Life", Album: "A Night at the Opera", Year: 1975, Picture: cover}))
+	write(t, filepath.Join(stick, "love2.mp3"), withTags(e.mp3(990, 20, "128k"), &songTags{Artist: "Queen", Title: "Love of My Life", Album: "Live Killers", Year: 1979, Picture: cover}))
 	write(t, filepath.Join(stick, "Queen/Bohemian Rhapsody.mp3"),
 		corrupt(withTags(bohemian, &songTags{Artist: "QUEEN", Title: "BOHEMIAN RHAPSODY"}), 0))
 	write(t, filepath.Join(stick, "Queen/folder.jpg"), cover)
@@ -251,7 +262,9 @@ func TestEndToEnd(t *testing.T) {
 		"._Caruso.mp3", "Alfa - Uno.mp3", "Beta - Due.mp3", "Brano rotto.mp3", "Distrutto.mp3",
 		"Già a posto - Ok.mp3", "Ligabue - Certe notti.mp3",
 		"Lucio Battisti - Emozioni.mp3", "Lucio Battisti - Perché.mp3", "Lucio Dalla - Caruso.mp3",
-		"Queen", "Queen - Bohemian Rhapsody.mp3", "RiparaMP3-registro.txt",
+		"Nomadi - Io vagabondo.mp3", "Pink Floyd - Intro.mp3",
+		"Queen", "Queen - Bohemian Rhapsody.mp3", "Queen - Love of My Life (Live Killers).mp3",
+		"Queen - Love of My Life.mp3", "RiparaMP3-registro.txt",
 		"Toto - Africa.mp3", "Varie", "Vasco Rossi - Albachiara.mp3", "Vasco Rossi - Vita spericolata.mp3", "_Doppioni",
 		"canzone.mp3", "elenco.html",
 	}
@@ -316,6 +329,15 @@ func TestEndToEnd(t *testing.T) {
 	if tg = checkAudio("Alfa - Uno.mp3", nil); tg.Artist != "Alfa" || tg.Title != "Uno" {
 		t.Errorf("scambio di nomi: %+v", tg)
 	}
+	if b, _ := os.ReadFile(filepath.Join(stick, "Nomadi - Io vagabondo.mp3")); !bytes.Equal(b, flipped) {
+		t.Error("il file con un bit cambiato e senza copia non doveva essere riscritto")
+	}
+	if tg, _, _ := readSongTags(t, filepath.Join(stick, "Queen - Love of My Life.mp3")); tg.Album != "A Night at the Opera" {
+		t.Errorf("Love of My Life: %v", tg)
+	}
+	if b, _ := os.ReadFile(filepath.Join(stick, "Pink Floyd - Intro.mp3")); len(b) != 330000 {
+		t.Error("il file vuoto è stato sostituito con un brano diverso")
+	}
 	// il file m4a non va toccato
 	if h := treeHashes(t, stick)["canzone.mp3"]; h != before["canzone.mp3"] {
 		t.Error("il file m4a è stato modificato")
@@ -333,6 +355,9 @@ func TestEndToEnd(t *testing.T) {
 		if !bytes.Contains(reg, []byte(w)) {
 			t.Errorf("il registro non contiene %s", w)
 		}
+	}
+	if bytes.Contains(reg, []byte("Other Band")) {
+		t.Error("usata una copia di un brano diverso")
 	}
 	if *requests == 0 {
 		t.Error("MusicBrainz non è stato interrogato")

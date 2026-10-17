@@ -167,10 +167,9 @@ func audioBounds(b []byte) (start, end int, hasV1 bool) {
 			changed = true
 		}
 		if end-start >= 15 && string(b[end-9:end]) == "LYRICS200" {
-			var size int
-			if _, err := fmt.Sscanf(string(b[end-15:end-9]), "%06d", &size); err == nil {
+			if size, ok := parseDigits(b[end-15 : end-9]); ok {
 				s := end - 15 - size
-				if s >= start && bytes.HasPrefix(b[s:], []byte("LYRICSBEGIN")) {
+				if s >= start && s+11 <= end && bytes.HasPrefix(b[s:], []byte("LYRICSBEGIN")) {
 					end = s
 					changed = true
 				}
@@ -192,6 +191,17 @@ func audioBounds(b []byte) (start, end int, hasV1 bool) {
 		}
 	}
 	return start, end, hasV1
+}
+
+func parseDigits(b []byte) (int, bool) {
+	n := 0
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, len(b) > 0
 }
 
 // --- Scansione dei frame ----------------------------------------------------
@@ -697,6 +707,12 @@ func analyzeMP3(b []byte, readErrors int) *mp3Info {
 	return in
 }
 
+// cuttable dice se il danno consiste in parti da togliere (blocchi rovinati,
+// inizio o fine illeggibili): solo in quel caso la riparazione serve.
+func (in *mp3Info) cuttable() bool {
+	return in.Repairable && (in.Gaps > 0 || in.TailJunk >= 4096 || in.LeadJunk >= 1024 || in.ReadErrors > 0)
+}
+
 // audioPayload restituisce i frame audio così come sono, senza tag e senza
 // eventuali byte estranei all'inizio o alla fine.
 func audioPayload(b []byte, in *mp3Info) []byte {
@@ -720,6 +736,11 @@ func repairPayload(b []byte) ([]byte, int, error) {
 	p := out.Bytes()
 	kept := len(p)
 	removed := (end - start) - kept
+	if removed == 0 {
+		// niente da togliere: il file resta com'è, compresi i CRC, che così
+		// continuano a segnalare l'eventuale danno
+		return p, 0, nil
+	}
 
 	fh, _ := parseHeader(b[s.frames[0].off:])
 	xi := parseXing(b, s.frames[0], fh)
