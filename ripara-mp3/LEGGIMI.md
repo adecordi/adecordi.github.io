@@ -7,6 +7,7 @@ Programma per Windows che sistema la raccolta di mp3 su una chiavetta:
 3. se una copia sana non c'è, **ripara** il file togliendo le parti rovinate;
 4. **sistema nomi, tag e copertine**:
    - i file si chiamano `Artista - Titolo.mp3`, tutti nella cartella principale della chiavetta;
+   - i brani con tag sbagliati vengono **riconosciuti dall'audio** (AcoustID) e corretti;
    - album e anno mancanti vengono cercati su MusicBrainz;
    - le **copertine** sono quelle ufficiali degli album, prese da Deezer, Apple Music o Cover Art Archive (vedi sotto);
 5. crea **`elenco.html`**, una pagina con tutti i brani: si apre nel browser e permette di cercare, ordinare e ascoltare.
@@ -41,6 +42,23 @@ Alla fine si apre `elenco.html`.
 Le cartelle rimaste vuote vengono tolte. Quelle che contengono ancora altri file (immagini, documenti) restano dove sono.
 
 La **copia di sicurezza** della chiavetta, così com'era prima, si trova in `Musica\RiparaMP3 backup <data>` sul PC. Per tornare indietro basta ricopiarla sulla chiavetta.
+
+## Riconoscimento dall'audio (tag sbagliati)
+
+Alcuni brani hanno tag del tutto sbagliati, per esempio titolo "Easy" e artista "lady". Per correggerli il programma **ascolta** ogni brano: ne calcola l'impronta audio e la confronta con il database gratuito [AcoustID](https://acoustid.org). Così sa che canzone è anche se nome e tag non c'entrano niente, e prende da MusicBrainz artista, titolo, album, anno e numero di traccia giusti.
+
+Serve una **chiave gratuita**, da chiedere una sola volta:
+1. apri https://acoustid.org/new-application e accedi (va bene anche un account Google);
+2. compila il modulo (nome: `RiparaMP3`, versione: `1.2`, la tua email) e conferma;
+3. copia la **API key** che compare;
+4. avvia RiparaMP3: alla domanda sulla chiave incollala nella finestra (tasto destro oppure Ctrl+V) e premi Invio.
+
+Il programma la ricorda per le volte successive. È una chiave personale: non mandarla a nessuno.
+
+- Un brano viene corretto solo se il riconoscimento è sicuro (somiglianza almeno all'85% e durata uguale entro 10 secondi). Gli altri seguono le regole normali.
+- Nel registro ogni correzione compare così: `[RICONOSCIUTO] Lady - Easy -> Commodores - Easy (album "Commodores")`. Nell'elenco HTML il brano ha la nota "Riconosciuto dall'audio".
+- La prima volta ci vuole circa un secondo e mezzo a brano. Le volte successive i brani già riconosciuti non vengono riascoltati.
+- Per saltare il riconoscimento: premi solo Invio alla domanda sulla chiave, oppure usa `--non-riconoscere`.
 
 ## Le copertine
 
@@ -90,6 +108,8 @@ Si possono passare da riga di comando, per esempio `RiparaMP3.exe --chiavetta E:
 | `--offline` | non usa Internet |
 | `--nobackup` | non fa la copia di sicurezza |
 | `--backup-dir D:\Backup` | dove salvare la copia di sicurezza |
+| `--acoustid-key CHIAVE` | chiave AcoustID per il riconoscimento dall'audio (viene ricordata) |
+| `--non-riconoscere` | non riconosce i brani dall'audio |
 | `--tieni-copertine` | tiene le copertine già presenti nei brani e cerca solo quelle che mancano |
 | `--si` | risponde sì a tutte le domande |
 
@@ -101,3 +121,7 @@ Il programma è scritto in Go.
 go test ./...                        # i test usano ffmpeg per creare mp3 di prova
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o RiparaMP3.exe .
 ```
+
+## Componenti di terze parti
+
+Il riconoscimento dall'audio usa `fpcalc` di [Chromaprint](https://github.com/acoustid/chromaprint) 1.5.1, incluso senza modifiche (licenza LGPL 2.1, vedi `fpcalc/LICENSE.md`). Il servizio AcoustID è gratuito per uso non commerciale.

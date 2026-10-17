@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -29,6 +31,24 @@ func newWebClient(minInterval time.Duration) *webClient {
 }
 
 func (c *webClient) get(u string) ([]byte, error) {
+	return c.do("GET", u, nil)
+}
+
+// postForm invia un modulo (application/x-www-form-urlencoded).
+func (c *webClient) postForm(u string, form url.Values) ([]byte, error) {
+	return c.do("POST", u, form)
+}
+
+// httpError è una risposta di errore del servizio; il corpo serve a chi
+// vuole leggere il messaggio (per esempio "chiave non valida").
+type httpError struct {
+	status int
+	body   []byte
+}
+
+func (e *httpError) Error() string { return fmt.Sprintf("risposta %d", e.status) }
+
+func (c *webClient) do(method, u string, form url.Values) ([]byte, error) {
 	if c.offline {
 		return nil, errors.New("internet non disponibile")
 	}
@@ -37,7 +57,13 @@ func (c *webClient) get(u string) ([]byte, error) {
 			time.Sleep(d)
 		}
 		c.last = time.Now()
-		req, _ := http.NewRequest("GET", u, nil)
+		var req *http.Request
+		if form != nil {
+			req, _ = http.NewRequest(method, u, strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		} else {
+			req, _ = http.NewRequest(method, u, nil)
+		}
 		req.Header.Set("User-Agent", userAgent)
 		resp, err := c.http.Do(req)
 		if err != nil {
@@ -62,7 +88,7 @@ func (c *webClient) get(u string) ([]byte, error) {
 			continue
 		default:
 			c.errors++
-			return nil, fmt.Errorf("risposta %d", resp.StatusCode)
+			return nil, &httpError{resp.StatusCode, body}
 		}
 	}
 	c.errors++
