@@ -219,7 +219,7 @@ var (
 	reBitrate   = regexp.MustCompile(`(?i)^\d{2,3}(k|kb|kbs|kbps|kbit)?$`)
 	reLeadNum   = regexp.MustCompile(`^\(?(\d{1,3})(?:[-.](\d{1,3}))?\)?(\s*)([-._)]?)(\s*)`)
 	reParens    = regexp.MustCompile(`\s*[\(\[][^\)\]]*[\)\]]`)
-	reJunkTitle = regexp.MustCompile(`(?i)^(track|traccia|brano|pista|audio ?track|titolo|title|untitled|senza titolo|unknown|sconosciuto|registrazione|new recording)\s*#?\s*\d*$`)
+	reJunkTitle = regexp.MustCompile(`(?i)^((track|traccia|brano|pista|audio ?track|registrazione|new recording)\s*#?\s*\d+|untitled|senza titolo|unknown|sconosciuto|titolo sconosciuto|unknown title)$`)
 )
 
 var strongJunk = map[string]bool{

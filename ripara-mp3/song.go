@@ -57,6 +57,8 @@ type song struct {
 	albumFrom    string // album dei tag prima di essere corretto
 	mbAlbum      string // album scelto da MusicBrainz e suoi identificativi
 	mbRG, mbRel  string
+	identified   bool   // riconosciuto dall'audio (AcoustID)
+	idFrom       string // "artista - titolo" prima del riconoscimento
 	fromName     bool
 	incomplete   bool
 	mbFound      bool
@@ -372,7 +374,7 @@ func samePath(a, b string) bool {
 }
 
 func (s *song) needsLookup() bool {
-	return s.status != stAlt && s.final.Artist != "" && s.final.Title != "" &&
+	return s.status != stAlt && !s.identified && s.final.Artist != "" && s.final.Title != "" &&
 		(s.final.Album == "" || s.final.Year == 0 || s.compilation ||
 			strings.ToUpper(s.final.Artist) == s.final.Artist || strings.ToUpper(s.final.Title) == s.final.Title)
 }

@@ -60,6 +60,9 @@ func reportStatus(s *song) (string, string) {
 	if s.err != "" {
 		return s.status, "Non è stato possibile aggiornarlo: " + s.err + "."
 	}
+	if s.idFrom != "" {
+		return stOK, "Riconosciuto dall'audio (prima era \"" + s.idFrom + "\")."
+	}
 	return stOK, ""
 }
 

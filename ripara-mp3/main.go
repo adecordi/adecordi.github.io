@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 )
 
-const version = "1.1"
+const version = "1.2"
 
 type listFlag []string
 
@@ -29,20 +29,24 @@ func (l *listFlag) String() string     { return strings.Join(*l, ";") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 
 type options struct {
-	stick      string
-	search     listFlag
-	yes        bool
-	offline    bool
-	noBackup   bool
-	backupDir  string
-	dryRun     bool
-	noOpen     bool
-	mbURL      string
-	caaURL     string
-	deezerURL  string
-	itunesURL  string
-	keepCovers bool
-	cacheDir   string
+	stick       string
+	search      listFlag
+	yes         bool
+	offline     bool
+	noBackup    bool
+	backupDir   string
+	dryRun      bool
+	noOpen      bool
+	mbURL       string
+	caaURL      string
+	deezerURL   string
+	itunesURL   string
+	keepCovers  bool
+	acoustidKey string
+	acoustidURL string
+	fpcalc      string
+	noIdentify  bool
+	cacheDir    string
 }
 
 func parseFlags() options {
@@ -60,6 +64,10 @@ func parseFlags() options {
 	flag.StringVar(&o.deezerURL, "deezer-url", "https://api.deezer.com", "indirizzo del servizio Deezer")
 	flag.StringVar(&o.itunesURL, "itunes-url", "https://itunes.apple.com", "indirizzo del servizio iTunes Search")
 	flag.BoolVar(&o.keepCovers, "tieni-copertine", false, "tiene le copertine già presenti nei file")
+	flag.StringVar(&o.acoustidKey, "acoustid-key", "", "chiave AcoustID per riconoscere i brani dall'audio")
+	flag.StringVar(&o.acoustidURL, "acoustid-url", "https://api.acoustid.org", "indirizzo del servizio AcoustID")
+	flag.StringVar(&o.fpcalc, "fpcalc", "", "percorso di fpcalc (Chromaprint)")
+	flag.BoolVar(&o.noIdentify, "non-riconoscere", false, "non riconosce i brani dall'audio")
 	flag.StringVar(&o.cacheDir, "cache-dir", "", "cartella per la cache delle ricerche online")
 	flag.Parse()
 	return o
@@ -323,7 +331,15 @@ func run(o options, u *ui) error {
 			fmt.Printf("  La copia verrà salvata in: %s\n", backupRoot)
 		}
 	}
-	online := !o.offline && u.yesNo("Cerco su Internet (MusicBrainz) album, anno e copertine che mancano?", true)
+	online := !o.offline && u.yesNo("Cerco su Internet album, anni e copertine e riconosco i brani dall'audio?", true)
+	cache := o.cacheDir
+	if cache == "" {
+		cache = appCacheDir()
+	}
+	idKey := ""
+	if online && !o.noIdentify {
+		idKey = acoustidKey(o, u, cache)
+	}
 
 	// 1. Controllo
 	covers := newCoverStore()
@@ -466,6 +482,15 @@ func run(o options, u *ui) error {
 		}
 	}
 	printSummary(root, songs)
+	if idKey != "" {
+		n := 0
+		for _, s := range songs {
+			if !s.dup && (s.status == stOK || s.status == stHD || s.status == stRip) {
+				n++
+			}
+		}
+		fmt.Printf("\n  Riconoscerò dall'audio %d brani (circa %s la prima volta).", n, formatDuration(float64(n)*1.5))
+	}
 	if online && (len(lookups) > 0 || len(albums) > 0) {
 		fmt.Printf("\n  Poi cerco online le informazioni mancanti per %d brani e le copertine ufficiali\n  di circa %d album (circa %s).\n",
 			len(lookups), len(albums), formatDuration(float64(len(lookups))*1.3+float64(len(albums))*0.6))
@@ -484,11 +509,18 @@ func run(o options, u *ui) error {
 	// 4. Ricerca online
 	step(4, "Ricerca online di album, anni e copertine")
 	if online {
-		cache := o.cacheDir
-		if cache == "" {
-			cache = appCacheDir()
-		}
 		mb := newMBClient(o.mbURL, cache)
+		if idKey != "" {
+			identifyStep(o, cache, idKey, songs, mb, lg)
+		}
+		// ricerca testuale per i brani non riconosciuti dall'audio
+		lookups = map[string][]*song{}
+		for _, s := range songs {
+			if s.needsLookup() {
+				k := cacheKey(s.final.Artist, s.final.Title)
+				lookups[k] = append(lookups[k], s)
+			}
+		}
 		keys := make([]string, 0, len(lookups))
 		for k := range lookups {
 			keys = append(keys, k)
@@ -523,7 +555,7 @@ func run(o options, u *ui) error {
 			fmt.Println("  Internet non raggiungibile: continuo senza le informazioni online.")
 		} else {
 			if len(keys) > 0 {
-				fmt.Printf("  Brani riconosciuti: %d su %d\n", foundN, len(keys))
+				fmt.Printf("  Trovati su MusicBrainz: %d su %d\n", foundN, len(keys))
 			}
 			art := newArtFinder(o.deezerURL, o.itunesURL, o.caaURL, cache)
 			assignCovers(songs, art, covers, replaceCovers, func(i, n int, name string) { progress("Copertine", i, n, name) })
@@ -706,5 +738,66 @@ func printFinal(songs []*song, report, logPath, backupRoot string) {
 	fmt.Printf("  Registro delle operazioni: %s\n", logPath)
 	if backupRoot != "" {
 		fmt.Printf("  Copia di sicurezza: %s\n", backupRoot)
+	}
+}
+
+// acoustidKey legge la chiave AcoustID dall'opzione, da quella salvata o,
+// la prima volta, chiedendola all'utente.
+func acoustidKey(o options, u *ui, cache string) string {
+	keyFile := filepath.Join(cache, "acoustid-key.txt")
+	save := func(k string) {
+		os.MkdirAll(cache, 0o755)
+		os.WriteFile(keyFile, []byte(k+"\n"), 0o600)
+	}
+	if k := strings.TrimSpace(o.acoustidKey); k != "" {
+		save(k)
+		return k
+	}
+	if b, err := os.ReadFile(keyFile); err == nil {
+		if k := strings.TrimSpace(string(b)); k != "" {
+			return k
+		}
+	}
+	if u.yes {
+		return ""
+	}
+	fmt.Println()
+	fmt.Println("Per riconoscere i brani dall'audio (anche quelli con i tag sbagliati) serve una")
+	fmt.Println("chiave gratuita di AcoustID. Si ottiene così:")
+	fmt.Println("  1. apri https://acoustid.org/new-application e accedi (va bene anche un account Google);")
+	fmt.Println("  2. compila il modulo (nome: RiparaMP3, versione: 1.2, la tua email) e conferma;")
+	fmt.Println("  3. copia la \"API key\" che compare.")
+	fmt.Println("La chiave viene ricordata: la chiederò solo questa volta.")
+	k := cleanPath(u.line("Incolla qui la chiave (tasto destro o Ctrl+V) e premi Invio, oppure solo Invio per saltare: "))
+	if k != "" {
+		save(k)
+	}
+	return k
+}
+
+// identifyStep riconosce i brani dall'audio e annota i cambi nel registro.
+func identifyStep(o options, cache, key string, songs []*song, mb *mbClient, lg *logger) {
+	bin, err := fpcalcBinary(o.fpcalc)
+	if err != nil {
+		fmt.Printf("  Riconoscimento dall'audio non disponibile: %v\n", err)
+		return
+	}
+	ac := newAcoustIDClient(o.acoustidURL, key, cache)
+	found, total := identifySongs(songs, ac, mb, bin, progress)
+	endProgress()
+	if ac.badKey {
+		os.Remove(filepath.Join(cache, "acoustid-key.txt"))
+		fmt.Println("  La chiave AcoustID non è valida: controlla di averla copiata tutta.")
+		fmt.Println("  Alla prossima esecuzione te la chiederò di nuovo.")
+		return
+	}
+	if ac.web.offline {
+		fmt.Println("  AcoustID non raggiungibile: continuo senza il riconoscimento dall'audio.")
+	}
+	fmt.Printf("  Brani riconosciuti dall'audio: %d su %d\n", found, total)
+	for _, s := range songs {
+		if s.idFrom != "" {
+			lg.add("RICONOSCIUTO", "%s -> %s (album %q)", s.idFrom, s.displayName(), s.final.Album)
+		}
 	}
 }

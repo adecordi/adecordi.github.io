@@ -90,14 +90,17 @@ type mbRelease struct {
 		SecondaryTypes []string `json:"secondary-types"`
 	} `json:"release-group"`
 	Media []struct {
-		Position    int `json:"position"`
-		TrackCount  int `json:"track-count"`
-		TrackOffset int `json:"track-offset"`
-		Track       []struct {
-			Number   string `json:"number"`
-			Position int    `json:"position"`
-		} `json:"track"`
+		Position    int       `json:"position"`
+		TrackCount  int       `json:"track-count"`
+		TrackOffset *int      `json:"track-offset"`
+		Track       []mbTrack `json:"track"`  // nelle ricerche
+		Tracks      []mbTrack `json:"tracks"` // nelle richieste per identificativo
 	} `json:"media"`
+}
+
+type mbTrack struct {
+	Number   string `json:"number"`
+	Position int    `json:"position"`
 }
 
 type mbSearch struct {
@@ -209,6 +212,14 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 		}
 		releases = append(releases, rec.Releases...)
 	}
+	fillRelease(out, releases)
+	c.cache[key] = out
+	return out, nil
+}
+
+// fillRelease sceglie fra le uscite di un brano il disco più adatto (album
+// in studio ufficiale, il più vecchio) e ne copia album, anno e traccia.
+func fillRelease(out *mbResult, releases []mbRelease) {
 	for _, r := range releases {
 		if isCompilationRelease(r) {
 			if k := normKey(stripParens(r.Title)); k != "" && !contains(out.CompTitles, k) {
@@ -216,44 +227,66 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 			}
 		}
 	}
-	if out.Found && len(releases) > 0 {
-		// anno: la prima uscita ufficiale del brano
-		for _, r := range releases {
-			if r.Status != "" && r.Status != "Official" {
-				continue
-			}
-			if len(r.Date) >= 4 {
-				if y, err := strconv.Atoi(r.Date[:4]); err == nil && y > 1000 && (out.Year == 0 || y < out.Year) {
-					out.Year = y
-				}
-			}
+	if !out.Found || len(releases) == 0 {
+		return
+	}
+	// anno: la prima uscita ufficiale del brano
+	for _, r := range releases {
+		if r.Status != "" && r.Status != "Official" {
+			continue
 		}
-		sort.SliceStable(releases, func(i, j int) bool {
-			ri, rj := releaseRank(releases[i]), releaseRank(releases[j])
-			if ri != rj {
-				return ri < rj
-			}
-			return dateKey(releases[i].Date) < dateKey(releases[j].Date)
-		})
-		best := releases[0]
-		out.Album = best.Title
-		out.AlbumIsComp = isCompilationRelease(best)
-		out.ReleaseGroup = best.ReleaseGroup.ID
-		out.Release = best.ID
-		if len(best.Media) > 0 {
-			m := best.Media[0]
-			out.TrackTotal = m.TrackCount
-			if len(m.Track) > 0 {
-				if n, err := strconv.Atoi(m.Track[0].Number); err == nil {
-					out.Track = n
-				} else if m.Track[0].Position > 0 {
-					out.Track = m.Track[0].Position
-				}
-			} else if m.TrackOffset >= 0 && m.TrackCount > 0 {
-				out.Track = m.TrackOffset + 1
+		if len(r.Date) >= 4 {
+			if y, err := strconv.Atoi(r.Date[:4]); err == nil && y > 1000 && (out.Year == 0 || y < out.Year) {
+				out.Year = y
 			}
 		}
 	}
-	c.cache[key] = out
+	releases = append([]mbRelease(nil), releases...)
+	sort.SliceStable(releases, func(i, j int) bool {
+		ri, rj := releaseRank(releases[i]), releaseRank(releases[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return dateKey(releases[i].Date) < dateKey(releases[j].Date)
+	})
+	best := releases[0]
+	out.Album = best.Title
+	out.AlbumIsComp = isCompilationRelease(best)
+	out.ReleaseGroup = best.ReleaseGroup.ID
+	out.Release = best.ID
+	if len(best.Media) > 0 {
+		m := best.Media[0]
+		out.TrackTotal = m.TrackCount
+		tracks := append(m.Track, m.Tracks...)
+		switch {
+		case len(tracks) > 0:
+			if n, err := strconv.Atoi(tracks[0].Number); err == nil {
+				out.Track = n
+			} else if tracks[0].Position > 0 {
+				out.Track = tracks[0].Position
+			}
+		case m.TrackOffset != nil && m.TrackCount > 0:
+			out.Track = *m.TrackOffset + 1
+		}
+	}
+}
+
+// recording legge da MusicBrainz una registrazione conosciuta per
+// identificativo (quello dato da AcoustID).
+func (c *mbClient) recording(id string) (*mbResult, error) {
+	body, err := c.web.get(c.base + "/ws/2/recording/" + url.PathEscape(id) + "?fmt=json&inc=artist-credits+releases+release-groups+media")
+	if err != nil {
+		return nil, err
+	}
+	var rec struct {
+		Title        string         `json:"title"`
+		ArtistCredit mbArtistCredit `json:"artist-credit"`
+		Releases     []mbRelease    `json:"releases"`
+	}
+	if err := json.Unmarshal(body, &rec); err != nil {
+		return nil, err
+	}
+	out := &mbResult{Found: rec.Title != "", Artist: rec.ArtistCredit.String(), Title: rec.Title, Checked: time.Now()}
+	fillRelease(out, rec.Releases)
 	return out, nil
 }
