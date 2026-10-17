@@ -19,9 +19,13 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// Le copertine vengono salvate al massimo a 500x500 in JPEG baseline: è il
-// formato che anche le autoradio più vecchie riescono a mostrare.
-const coverMax = 500
+// Le copertine vengono salvate al massimo a 600x600 in JPEG baseline: è il
+// formato che anche le autoradio meno recenti riescono a mostrare.
+const coverMax = 600
+
+// minCoverSide è la dimensione minima perché un'immagine già presente (nel
+// file o nella cartella) valga la pena di essere tenuta.
+const minCoverSide = 300
 
 type coverStore struct {
 	mu     sync.Mutex
@@ -49,6 +53,19 @@ func (c *coverStore) add(raw []byte) string {
 	c.byID[id] = img
 	c.mu.Unlock()
 	return id
+}
+
+// minSide restituisce il lato più corto della copertina (0 se non c'è).
+func (c *coverStore) minSide(id string) int {
+	raw := c.get(id)
+	if raw == nil {
+		return 0
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return 0
+	}
+	return min(cfg.Width, cfg.Height)
 }
 
 func (c *coverStore) get(id string) []byte {
@@ -88,7 +105,7 @@ func normalizeCover(raw []byte) ([]byte, error) {
 	if cfg.Width < 16 || cfg.Height < 16 {
 		return nil, image.ErrFormat
 	}
-	if format == "jpeg" && cfg.Width <= coverMax && cfg.Height <= coverMax && len(raw) <= 300<<10 && !isProgressiveJPEG(raw) {
+	if format == "jpeg" && cfg.Width <= coverMax && cfg.Height <= coverMax && len(raw) <= 200<<10 && !isProgressiveJPEG(raw) {
 		return raw, nil
 	}
 	img, _, err := image.Decode(bytes.NewReader(raw))
@@ -195,7 +212,8 @@ func folderCover(dir string) []byte {
 	sort.Slice(cands, func(i, j int) bool { return cands[i].rank < cands[j].rank })
 	for _, c := range cands {
 		if b, err := os.ReadFile(filepath.Join(dir, c.name)); err == nil {
-			if _, _, err := image.DecodeConfig(bytes.NewReader(b)); err == nil {
+			// le miniature (AlbumArtSmall e simili) sono troppo piccole
+			if cfg, _, err := image.DecodeConfig(bytes.NewReader(b)); err == nil && min(cfg.Width, cfg.Height) >= minCoverSide {
 				return b
 			}
 		}

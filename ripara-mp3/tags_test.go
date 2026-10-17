@@ -127,7 +127,7 @@ func TestNormalizeCover(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, format, _ := image.DecodeConfig(bytes.NewReader(n))
-	if format != "jpeg" || cfg.Width != 500 || cfg.Height != 375 || isProgressiveJPEG(n) {
+	if format != "jpeg" || cfg.Width != 600 || cfg.Height != 450 || isProgressiveJPEG(n) {
 		t.Errorf("copertina %s %dx%d", format, cfg.Width, cfg.Height)
 	}
 	small := testJPEG(t, 300, 300)

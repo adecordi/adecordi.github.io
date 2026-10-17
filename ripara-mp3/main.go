@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 )
 
-const version = "1.0"
+const version = "1.1"
 
 type listFlag []string
 
@@ -29,17 +29,20 @@ func (l *listFlag) String() string     { return strings.Join(*l, ";") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 
 type options struct {
-	stick     string
-	search    listFlag
-	yes       bool
-	offline   bool
-	noBackup  bool
-	backupDir string
-	dryRun    bool
-	noOpen    bool
-	mbURL     string
-	caaURL    string
-	cacheDir  string
+	stick      string
+	search     listFlag
+	yes        bool
+	offline    bool
+	noBackup   bool
+	backupDir  string
+	dryRun     bool
+	noOpen     bool
+	mbURL      string
+	caaURL     string
+	deezerURL  string
+	itunesURL  string
+	keepCovers bool
+	cacheDir   string
 }
 
 func parseFlags() options {
@@ -54,6 +57,9 @@ func parseFlags() options {
 	flag.BoolVar(&o.noOpen, "non-aprire", false, "non apre l'elenco nel browser alla fine")
 	flag.StringVar(&o.mbURL, "mb-url", "https://musicbrainz.org", "indirizzo del servizio MusicBrainz")
 	flag.StringVar(&o.caaURL, "caa-url", "https://coverartarchive.org", "indirizzo del Cover Art Archive")
+	flag.StringVar(&o.deezerURL, "deezer-url", "https://api.deezer.com", "indirizzo del servizio Deezer")
+	flag.StringVar(&o.itunesURL, "itunes-url", "https://itunes.apple.com", "indirizzo del servizio iTunes Search")
+	flag.BoolVar(&o.keepCovers, "tieni-copertine", false, "tiene le copertine già presenti nei file")
 	flag.StringVar(&o.cacheDir, "cache-dir", "", "cartella per la cache delle ricerche online")
 	flag.Parse()
 	return o
@@ -422,32 +428,47 @@ func run(o options, u *ui) error {
 
 	// 3. Nomi e tag
 	step(3, "Preparazione di nomi, tag e copertine")
+	replaceCovers := online && !o.keepCovers
 	for _, s := range songs {
 		if s.status == stAlt {
 			continue
 		}
 		s.computeTags(root, hdTags[s])
-		s.coverID = s.origCoverID
-		if s.coverID == "" && hdCovers[s] != "" {
-			s.coverID = hdCovers[s]
-			s.coverSource = "hd"
+		// copertina di ripiego: quella già nel file o nella copia sull'hard
+		// disk, purché non sia una miniatura
+		switch {
+		case covers.minSide(s.origCoverID) >= minCoverSide:
+			s.fallback = s.origCoverID
+		case covers.minSide(hdCovers[s]) >= minCoverSide:
+			s.fallback = hdCovers[s]
 		}
 	}
 	folderCovers(songs, covers)
+	for _, s := range songs {
+		s.coverID = s.fallback
+		if !replaceCovers && s.origCoverID != "" {
+			s.coverID = s.origCoverID
+		}
+	}
+	markCompilations(songs)
 	shareCovers(songs)
 	planTargets(root, songs)
 	lookups := map[string][]*song{}
+	albums := map[string]bool{}
 	for _, s := range songs {
 		s.computeNeedWrite()
 		if online && s.needsLookup() {
 			k := cacheKey(s.final.Artist, s.final.Title)
 			lookups[k] = append(lookups[k], s)
 		}
+		if replaceCovers && s.final.Album != "" && s.status != stAlt && s.status != stBad {
+			albums[normKey(coverArtist(s.final))+"|"+albumMatchKey(s.final.Album)] = true
+		}
 	}
 	printSummary(root, songs)
-	if online && len(lookups) > 0 {
-		fmt.Printf("\n  Poi cerco online le informazioni mancanti per %d brani (circa %s).\n",
-			len(lookups), formatDuration(float64(len(lookups))*1.3))
+	if online && (len(lookups) > 0 || len(albums) > 0) {
+		fmt.Printf("\n  Poi cerco online le informazioni mancanti per %d brani e le copertine ufficiali\n  di circa %d album (circa %s).\n",
+			len(lookups), len(albums), formatDuration(float64(len(lookups))*1.3+float64(len(albums))*0.6))
 	}
 	if o.dryRun {
 		printPlan(root, songs)
@@ -462,12 +483,12 @@ func run(o options, u *ui) error {
 
 	// 4. Ricerca online
 	step(4, "Ricerca online di album, anni e copertine")
-	if online && len(lookups) > 0 {
+	if online {
 		cache := o.cacheDir
 		if cache == "" {
 			cache = appCacheDir()
 		}
-		mb := newMBClient(o.mbURL, o.caaURL, cache)
+		mb := newMBClient(o.mbURL, cache)
 		keys := make([]string, 0, len(lookups))
 		for k := range lookups {
 			keys = append(keys, k)
@@ -480,9 +501,7 @@ func run(o options, u *ui) error {
 			progress("Cerco", i+1, len(keys), s.displayName())
 			r, err := mb.lookup(s.final.Artist, s.final.Title, s.info.Duration)
 			if err != nil {
-				if mb.offline {
-					endProgress()
-					fmt.Println("  Internet non raggiungibile: continuo senza le informazioni online.")
+				if mb.web.offline {
 					break
 				}
 				continue
@@ -491,18 +510,8 @@ func run(o options, u *ui) error {
 				continue
 			}
 			foundN++
-			var coverID string
 			for _, g := range group {
 				g.applyMB(r)
-				if g.coverID == "" {
-					if coverID == "" {
-						coverID = covers.add(mb.cover(r))
-					}
-					if coverID != "" {
-						g.coverID = coverID
-						g.coverSource = "online"
-					}
-				}
 			}
 			if i%20 == 19 {
 				mb.save()
@@ -510,16 +519,42 @@ func run(o options, u *ui) error {
 		}
 		mb.save()
 		endProgress()
-		fmt.Printf("  Brani riconosciuti: %d su %d\n", foundN, len(keys))
+		if mb.web.offline {
+			fmt.Println("  Internet non raggiungibile: continuo senza le informazioni online.")
+		} else {
+			if len(keys) > 0 {
+				fmt.Printf("  Brani riconosciuti: %d su %d\n", foundN, len(keys))
+			}
+			art := newArtFinder(o.deezerURL, o.itunesURL, o.caaURL, cache)
+			assignCovers(songs, art, covers, replaceCovers, func(i, n int, name string) { progress("Copertine", i, n, name) })
+			endProgress()
+			if mb.web.errors+art.errors() > 0 {
+				fmt.Println("  Attenzione: alcuni servizi online non hanno risposto. Rilancia il programma più tardi")
+				fmt.Println("  per completare album e copertine (quello che è già stato trovato resta in memoria).")
+			}
+		}
+		newCovers, fixedAlbums := 0, 0
+		for _, s := range songs {
+			if s.albumFrom != "" {
+				fixedAlbums++
+				lg.add("ALBUM", "%s: %q -> %q", s.displayName(), s.albumFrom, s.final.Album)
+				if s.coverID == s.fallback {
+					// la copertina vecchia era quella della raccolta
+					s.coverID = ""
+				}
+			}
+			if s.coverID != "" && s.coverID != s.origCoverID && s.status != stAlt && s.status != stBad && !s.dup {
+				newCovers++
+			}
+		}
+		fmt.Printf("  Copertine nuove: %d   Album di compilation corretti: %d\n", newCovers, fixedAlbums)
 		shareCovers(songs)
 		planTargets(root, songs)
 		for _, s := range songs {
 			s.computeNeedWrite()
 		}
-	} else if !online {
-		fmt.Println("  Ricerca online disattivata.")
 	} else {
-		fmt.Println("  Non manca nessuna informazione.")
+		fmt.Println("  Ricerca online disattivata.")
 	}
 
 	// 5. Modifiche

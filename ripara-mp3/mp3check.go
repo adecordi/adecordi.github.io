@@ -727,11 +727,58 @@ func repairPayload(b []byte) ([]byte, int, error) {
 	if s.noFrames || len(s.frames) < 10 {
 		return nil, 0, fmt.Errorf("troppo pochi dati audio integri")
 	}
+	// frame vicini ai punti rovinati: quello subito prima di un danno può
+	// avere il contenuto sovrascritto; quelli subito dopo rimandano (bit
+	// reservoir) a dati andati persi
+	before := map[int]bool{}
+	after := map[int]bool{}
+	byEnd := map[int]int{}
+	byStart := map[int]int{}
+	for i, f := range s.frames {
+		byEnd[f.off+f.size] = i
+		byStart[f.off] = i
+	}
+	for _, g := range s.gaps {
+		if i, ok := byEnd[g.off]; ok {
+			before[i] = true
+		}
+		if i, ok := byStart[g.off+g.size]; ok {
+			after[i] = true
+		}
+	}
+	if s.tailJunk > 0 {
+		before[len(s.frames)-1] = true
+	}
+	first, _ := parseHeader(b[s.frames[0].off:])
+	hasXing := parseXing(b, s.frames[0], first) != nil
 	var out bytes.Buffer
 	offsets := make([]int, 0, len(s.frames))
-	for _, f := range s.frames {
+	checking, avail := false, 0
+	for i, f := range s.frames {
+		fr := append([]byte(nil), b[f.off:f.off+f.size]...)
+		h, _ := parseHeader(fr)
+		if h.layer != 3 {
+			if before[i] && len(s.frames) > 10 {
+				continue
+			}
+		} else if !(i == 0 && hasXing) {
+			if after[i] {
+				checking, avail = true, 0
+			}
+			mdb, part23, ok := checkSideInfo(fr, h)
+			mainSize := f.size - 4 - h.sideInfoSize()
+			if h.crc {
+				mainSize -= 2
+			}
+			if !ok || before[i] || (checking && mdb > avail) || part23 > (mdb+mainSize)*8 {
+				muteFrame(fr, h)
+			}
+			if avail += mainSize; avail >= 512 {
+				checking = false
+			}
+		}
 		offsets = append(offsets, out.Len())
-		out.Write(b[f.off : f.off+f.size])
+		out.Write(fr)
 	}
 	p := out.Bytes()
 	kept := len(p)
@@ -777,6 +824,23 @@ func repairPayload(b []byte) ([]byte, int, error) {
 		}
 	}
 	return p, removed, nil
+}
+
+// muteFrame trasforma un frame Layer III in un frame di silenzio azzerando
+// le informazioni laterali (e aggiornando il CRC del frame, se presente).
+func muteFrame(fr []byte, h frameHeader) {
+	o := 4
+	if h.crc {
+		o += 2
+	}
+	si := h.sideInfoSize()
+	if o+si > len(fr) {
+		return
+	}
+	clear(fr[o : o+si])
+	if h.crc {
+		binary.BigEndian.PutUint16(fr[4:6], crc16MPEG(fr[6:6+si], crc16MPEG(fr[2:4], 0xFFFF)))
+	}
 }
 
 func otherFormat(b []byte) string {

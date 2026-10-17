@@ -7,7 +7,8 @@ Programma per Windows che sistema la raccolta di mp3 su una chiavetta:
 3. se una copia sana non c'è, **ripara** il file togliendo le parti rovinate;
 4. **sistema nomi, tag e copertine**:
    - i file si chiamano `Artista - Titolo.mp3`, tutti nella cartella principale della chiavetta;
-   - album, anno e copertine mancanti vengono cercati su MusicBrainz;
+   - album e anno mancanti vengono cercati su MusicBrainz;
+   - le **copertine** sono quelle ufficiali degli album, prese da Deezer, Apple Music o Cover Art Archive (vedi sotto);
 5. crea **`elenco.html`**, una pagina con tutti i brani: si apre nel browser e permette di cercare, ordinare e ascoltare.
 
 ## Come si usa
@@ -41,6 +42,19 @@ Le cartelle rimaste vuote vengono tolte. Quelle che contengono ancora altri file
 
 La **copia di sicurezza** della chiavetta, così com'era prima, si trova in `Musica\RiparaMP3 backup <data>` sul PC. Per tornare indietro basta ricopiarla sulla chiavetta.
 
+## Le copertine
+
+Per ogni album il programma cerca la copertina **ufficiale**, nell'ordine:
+1. Deezer;
+2. Apple Music;
+3. Cover Art Archive.
+
+Le prime due hanno le immagini pubblicate dalle case discografiche, pulite e in alta qualità.
+
+- Le copertine vengono salvate a **600×600 pixel** in JPEG semplice, un formato che anche le autoradio meno recenti mostrano senza problemi.
+- Le copertine già presenti nei brani vengono **sostituite** con quelle ufficiali. Se online non si trova nulla resta quella che c'era, purché non sia una miniatura minuscola. Per tenere le copertine già presenti usa `--tieni-copertine`.
+- **Compilation**: se l'album nei tag è una raccolta ("Festivalbar 98", "Greatest Hits", artista dell'album "Artisti vari"...), il programma cerca l'**album originale** del brano e corregge album, anno e numero di traccia. La copertina diventa quella dell'album originale. Ogni correzione è scritta nel registro, per esempio `[ALBUM] Lucio Dalla - Attenti al lupo: "Festivalbar 90" -> "Cambio"`.
+
 ## Gli stati nell'elenco
 
 - **Sano**: il file era integro.
@@ -61,7 +75,8 @@ La **copia di sicurezza** della chiavetta, così com'era prima, si trova in `Mus
 - Un danno molto piccolo (un singolo bit cambiato) si riconosce solo se l'mp3 contiene il codice di controllo LAME. È così nella maggior parte degli mp3 creati con LAME o ffmpeg.
 - Un file tagliato esattamente alla fine di un frame si riconosce solo se ha l'intestazione Xing (quasi tutti gli mp3 recenti la hanno).
 - Quando un tag viene riscritto si conservano titolo, artista, album, artista dell'album, anno, traccia, disco, genere, compositore, commento, testo e copertina. Informazioni particolari come ReplayGain, valutazioni a stelle o identificativi MusicBrainz non vengono riportate (restano nella copia di sicurezza).
-- La ricerca su Internet funziona solo per i brani di cui si conoscono artista e titolo. MusicBrainz permette una ricerca al secondo, quindi per raccolte grandi ci vuole qualche minuto.
+- La ricerca su Internet funziona solo per i brani di cui si conoscono artista e titolo. MusicBrainz permette una ricerca al secondo, quindi per raccolte grandi ci vuole qualche minuto. Le copertine si cercano una volta per album e restano in memoria per le volte successive.
+- Le compilation si riconoscono dall'artista dell'album, dal titolo e da quanti artisti diversi ci sono nello stesso album: un album che si chiama per esempio "Gold" o "Singles" viene trattato come raccolta. Se l'album originale non si trova, i tag restano com'erano.
 
 ## Opzioni (per utenti esperti)
 
@@ -75,6 +90,7 @@ Si possono passare da riga di comando, per esempio `RiparaMP3.exe --chiavetta E:
 | `--offline` | non usa Internet |
 | `--nobackup` | non fa la copia di sicurezza |
 | `--backup-dir D:\Backup` | dove salvare la copia di sicurezza |
+| `--tieni-copertine` | tiene le copertine già presenti nei brani e cerca solo quelle che mancano |
 | `--si` | risponde sì a tutte le domande |
 
 ## Per chi sviluppa
