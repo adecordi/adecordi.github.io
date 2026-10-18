@@ -113,33 +113,24 @@ func (s *server) processScan(jobID string, acc *scanAcc) {
 	// rimettono in ordine di nome, che è l'ordine in cui stanno sulla chiavetta
 	// (e quello con cui si importano nelle playlist)
 	sort.SliceStable(acc.files, func(i, j int) bool { return strings.ToLower(acc.files[i].P) < strings.ToLower(acc.files[j].P) })
-	var songs []*song
-	byFile := map[*song]*fileChiavetta{}
-	fps := map[*song]string{}
-	keys := map[*song]string{}
-	for i := range acc.files {
-		f := &acc.files[i]
-		if f.Fmt != "" {
-			continue
-		}
-		sg := songFromFile(f)
-		songs = append(songs, sg)
-		byFile[sg] = f
-		fps[sg], keys[sg] = f.FP, f.AU
-	}
-	s.enrichSongs(songs, fps, keys, func(fase string, i, n int) { s.setActivity(fase, i, n) })
-
-	st := &statoChiavetta{Unita: acc.info.Unita, Letta: time.Now(), File: acc.files, Finali: map[string]*finale{},
+	st := &statoChiavetta{Unita: acc.info.Unita, Letta: time.Now(), File: acc.files, Finali: s.elaborate(acc.files),
 		Legami: map[string]string{}, Marcatore: acc.info.Marcatore}
-	for _, sg := range songs {
-		t := sg.final
-		t.Picture = nil
-		st.Finali[sg.origRel] = &finale{Tag: t, Cop: sg.coverID, FonteCop: sg.coverSource, MBRG: sg.mbRG, MBRel: sg.mbRel, Riconosciuto: sg.idFrom}
-	}
 	s.mu.Lock()
 	if s.lib.Chiavetta == "" {
 		s.lib.Chiavetta = st.Unita.Volume
 		s.saveLib()
+	}
+	if prev := s.chiav[st.Unita.Volume]; prev != nil {
+		// i file rimasti uguali dalla lettura prima tengono il loro brano
+		same := map[string]fileChiavetta{}
+		for _, f := range prev.File {
+			same[f.P] = f
+		}
+		for _, f := range st.File {
+			if pf, ok := same[f.P]; ok && pf.S == f.S && pf.M == f.M && pf.H == f.H && prev.Legami[f.P] != "" {
+				st.Legami[f.P] = prev.Legami[f.P]
+			}
+		}
 	}
 	s.chiav[st.Unita.Volume] = st
 	s.linkFilesLocked(st)
@@ -150,8 +141,132 @@ func (s *server) processScan(jobID string, acc *scanAcc) {
 	s.enrichLibrary()
 }
 
+// elaborate dice come il sito capisce i file letti da una chiavetta.
+func (s *server) elaborate(files []fileChiavetta) map[string]*finale {
+	var songs []*song
+	fps := map[*song]string{}
+	keys := map[*song]string{}
+	for i := range files {
+		f := &files[i]
+		if f.Fmt != "" {
+			continue
+		}
+		sg := songFromFile(f)
+		songs = append(songs, sg)
+		fps[sg], keys[sg] = f.FP, f.AU
+	}
+	s.enrichSongs(songs, fps, keys, func(fase string, i, n int) { s.setActivity(fase, i, n) })
+	out := map[string]*finale{}
+	for _, sg := range songs {
+		t := sg.final
+		t.Picture = nil
+		out[sg.origRel] = &finale{Tag: t, Cop: sg.coverID, FonteCop: sg.coverSource, MBRG: sg.mbRG, MBRel: sg.mbRel, Riconosciuto: sg.idFrom}
+	}
+	return out
+}
+
+// reanalyze riconosce di nuovo i file delle chiavette già lette, per esempio
+// dopo aver messo la chiave AcoustID, senza rileggerle dal PC. I brani delle
+// playlist presi da quei file si aggiornano, tranne quelli corretti a mano.
+func (s *server) reanalyze() {
+	s.mu.Lock()
+	vols := make([]string, 0, len(s.chiav))
+	for v := range s.chiav {
+		vols = append(vols, v)
+	}
+	main := s.lib.Chiavetta
+	s.mu.Unlock()
+	sort.Slice(vols, func(i, j int) bool {
+		if (vols[i] == main) != (vols[j] == main) {
+			return vols[i] == main
+		}
+		return vols[i] < vols[j]
+	})
+	for _, v := range vols {
+		s.mu.Lock()
+		st := s.chiav[v]
+		if st == nil {
+			s.mu.Unlock()
+			continue
+		}
+		files := append([]fileChiavetta(nil), st.File...)
+		letta := st.Letta
+		s.mu.Unlock()
+
+		start := time.Now()
+		fin := s.elaborate(files)
+
+		s.mu.Lock()
+		st = s.chiav[v]
+		if st == nil || !st.Letta.Equal(letta) {
+			// riletta nel frattempo: vale la lettura nuova
+			s.mu.Unlock()
+			continue
+		}
+		changed := 0
+		done := map[string]bool{} // un brano con due file si aggiorna una volta
+		for p, nf := range fin {
+			old := st.Finali[p]
+			if b := s.lib.Brani[st.Legami[p]]; b != nil && old != nil && !done[b.ID] {
+				if b.Origine != "chiavetta" || b.Artista != old.Tag.Artist || b.Titolo != old.Tag.Title {
+					continue // corretto a mano o preso altrove: resta com'è
+				}
+				done[b.ID] = true
+				if b.daFinale(nf) {
+					changed++
+				}
+			}
+			st.Finali[p] = nf
+		}
+		s.relinkAllLocked()
+		s.saveStick(st)
+		s.saveLib()
+		s.mu.Unlock()
+		log.Printf("chiavetta %s riconosciuta di nuovo: %d brani aggiornati in %s", st.Unita.nome(), changed, time.Since(start).Round(time.Second))
+	}
+	s.enrichLibrary()
+}
+
+// daFinale aggiorna un brano preso da un file con quello che il sito ne ha
+// capito di nuovo; dice se è cambiato qualcosa.
+func (b *brano) daFinale(fin *finale) bool {
+	t := fin.Tag
+	if strings.TrimSpace(t.Title) == "" {
+		return false
+	}
+	before := *b
+	other := b.Artista != t.Artist || b.Titolo != t.Title
+	b.Artista, b.Titolo = t.Artist, t.Title
+	if t.Album != "" {
+		b.Album, b.Traccia, b.TracceTot = t.Album, t.Track, t.TrackTotal
+	}
+	// l'anno originale trovato dopo (MusicBrainz) è spesso più vecchio di
+	// quello del file: per lo stesso brano si tiene il più vecchio
+	if t.Year > 0 && (other || b.Anno == 0 || t.Year < b.Anno) {
+		b.Anno = t.Year
+	}
+	if t.Genre != "" {
+		b.Genere = t.Genre
+	}
+	if fin.Cop != "" {
+		b.Copertina, b.FonteCop = fin.Cop, fin.FonteCop
+	}
+	if fin.MBRG != "" {
+		b.MBRG, b.MBRel = fin.MBRG, fin.MBRel
+	}
+	if other {
+		// genere, ritmo e lingua vanno ricercati per il brano giusto
+		b.Info, b.DeezerID, b.GenereDz, b.BPM, b.ISRC, b.Lingua = false, 0, "", 0, "", ""
+	}
+	return b.Artista != before.Artista || b.Titolo != before.Titolo || b.Album != before.Album || b.Anno != before.Anno ||
+		b.Copertina != before.Copertina || b.Genere != before.Genere
+}
+
 // linkFilesLocked collega i file della chiavetta ai brani della libreria:
-// prima per audio identico, poi per artista e titolo con durata simile.
+// prima per audio identico, poi col legame che il file aveva già (fatto
+// all'importazione: un file rovinato e senza artista non si ritrova in altro
+// modo), poi per artista e titolo con durata simile. Senza artista non si
+// collega niente per nome: la chiave sarebbe vuota, uguale per tutti.
 func (s *server) linkFilesLocked(st *statoChiavetta) {
 	byAudio := map[string]string{}
 	byKey := map[string][]*brano{}
@@ -159,8 +274,11 @@ func (s *server) linkFilesLocked(st *statoChiavetta) {
 		for _, au := range b.Audio {
 			byAudio[au] = b.ID
 		}
-		byKey[b.chiave()] = append(byKey[b.chiave()], b)
+		if k := b.chiave(); k != "" {
+			byKey[k] = append(byKey[k], b)
+		}
 	}
+	old := st.Legami
 	st.Legami = map[string]string{}
 	for i := range st.File {
 		f := &st.File[i]
@@ -171,11 +289,19 @@ func (s *server) linkFilesLocked(st *statoChiavetta) {
 			st.Legami[f.P] = id
 			continue
 		}
+		if id := old[f.P]; id != "" && s.lib.Brani[id] != nil {
+			st.Legami[f.P] = id
+			continue
+		}
 		fin := st.Finali[f.P]
 		if fin == nil {
 			continue
 		}
-		for _, b := range byKey[pairKey(fin.Tag.Artist, fin.Tag.Title)] {
+		k := pairKey(fin.Tag.Artist, fin.Tag.Title)
+		if k == "" {
+			continue
+		}
+		for _, b := range byKey[k] {
 			if b.Durata == 0 || f.Dur == 0 || math.Abs(b.Durata-f.Dur) <= 5 {
 				st.Legami[f.P] = b.ID
 				if f.AU != "" && !f.Rov && !contains(b.Audio, f.AU) {
@@ -240,18 +366,26 @@ func topFolder(p string) string {
 	return ""
 }
 
-// importPreviewLocked raggruppa per cartella i file della chiavetta che non
-// sono ancora in nessuna playlist.
-func (s *server) importPreviewLocked() (*statoChiavetta, []gruppoImport) {
-	st := s.chiav[s.lib.Chiavetta]
+// importPreviewLocked raggruppa per cartella i file di una chiavetta letta
+// ("" = quella delle playlist) che non sono ancora nelle playlist. Per la
+// chiavetta delle playlist vale qualsiasi playlist; un'altra chiavetta
+// diventa una playlist a sé, col suo nome, anche con i brani che stanno già
+// in altre playlist.
+func (s *server) importPreviewLocked(vol string) (*statoChiavetta, []gruppoImport) {
+	if vol == "" {
+		vol = s.lib.Chiavetta
+	}
+	st := s.chiav[vol]
 	if st == nil {
 		return nil, nil
 	}
+	main := vol == s.lib.Chiavetta
 	byFolder := map[string]*gruppoImport{}
 	var order []string
 	for i := range st.File {
 		f := &st.File[i]
-		if f.Fmt != "" || st.Legami[f.P] != "" {
+		id := st.Legami[f.P]
+		if f.Fmt != "" || (main && id != "") {
 			continue
 		}
 		top := topFolder(f.P)
@@ -268,13 +402,22 @@ func (s *server) importPreviewLocked() (*statoChiavetta, []gruppoImport) {
 				}
 			}
 			g = &gruppoImport{Chiave: top, Nome: name}
+			match := top
+			if !main {
+				match = safeFileName(name, 60)
+			}
 			for _, p := range s.lib.Playlist {
-				if (p.Tipo == tipoCartella || s.lib.tesla()) && strings.EqualFold(safeFileName(p.Nome, 60), top) && top != "" {
+				if (p.Tipo == tipoCartella || s.lib.tesla()) && strings.EqualFold(safeFileName(p.Nome, 60), match) && match != "" {
 					g.Playlist = p.ID
 				}
 			}
 			byFolder[top] = g
 			order = append(order, top)
+		}
+		if id != "" {
+			if pl := s.lib.playlistByID(g.Playlist); pl != nil && contains(pl.Brani, id) {
+				continue
+			}
 		}
 		fin := st.Finali[f.P]
 		a := anteprimaFile{P: f.P, Rovinato: f.Rov}
@@ -286,7 +429,9 @@ func (s *server) importPreviewLocked() (*statoChiavetta, []gruppoImport) {
 	sort.Strings(order)
 	out := make([]gruppoImport, 0, len(order))
 	for _, k := range order {
-		out = append(out, *byFolder[k])
+		if len(byFolder[k].Brani) > 0 {
+			out = append(out, *byFolder[k])
+		}
 	}
 	return st, out
 }
@@ -298,9 +443,10 @@ type sceltaImport struct {
 	Includi  bool   `json:"includi"`
 }
 
-// importLocked crea brani e playlist dai gruppi scelti.
-func (s *server) importLocked(scelte []sceltaImport, user string) (int, int) {
-	st, groups := s.importPreviewLocked()
+// importLocked crea brani e playlist dai gruppi scelti di una chiavetta letta
+// ("" = quella delle playlist).
+func (s *server) importLocked(vol string, scelte []sceltaImport, user string) (int, int) {
+	st, groups := s.importPreviewLocked(vol)
 	if st == nil {
 		return 0, 0
 	}

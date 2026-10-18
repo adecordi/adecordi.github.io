@@ -35,6 +35,7 @@ func (s *server) apiRoutes(mux *http.ServeMux) {
 	h("POST /api/lavori/{id}/annulla", s.apiCancelJob)
 	h("GET /api/importa", s.apiImportPreview)
 	h("POST /api/importa", s.apiImport)
+	h("POST /api/rianalizza", s.apiReanalyze)
 	h("GET /api/piano", s.apiPlan)
 	h("POST /api/piano/{id}/conferma", s.apiConfirm)
 	h("GET /api/proposte", s.apiProposals)
@@ -200,14 +201,26 @@ func (s *server) apiStato(w http.ResponseWriter, r *http.Request) {
 				n++
 			}
 		}
-		_, groups := s.importPreviewLocked()
-		nuovi := 0
-		for _, g := range groups {
-			nuovi += len(g.Brani)
-		}
 		out["chiavetta"] = map[string]any{"etichetta": st.Unita.nome(), "volume": st.Unita.Volume, "letta": humanAge(st.Letta),
-			"file": n, "liberi": st.Unita.Liberi, "dimensione": st.Unita.Dimensione, "da_importare": nuovi}
+			"file": n, "liberi": st.Unita.Liberi, "dimensione": st.Unita.Dimensione, "da_importare": s.toImportLocked("")}
 	}
+	// le altre chiavette lette, che si possono importare come playlist
+	altre := []map[string]any{}
+	for v, st := range s.chiav {
+		if v == s.lib.Chiavetta {
+			continue
+		}
+		n := 0
+		for _, f := range st.File {
+			if f.Fmt == "" {
+				n++
+			}
+		}
+		altre = append(altre, map[string]any{"etichetta": st.Unita.nome(), "volume": v, "letta": humanAge(st.Letta), "file": n,
+			"da_importare": s.toImportLocked(v)})
+	}
+	sort.Slice(altre, func(a, b int) bool { return altre[a]["etichetta"].(string) < altre[b]["etichetta"].(string) })
+	out["altre"] = altre
 	var disks []vistaUnita
 	for _, iv := range s.dischi {
 		disks = append(disks, vistaUnita{Lettera: iv.Unita.Lettera, Etichetta: iv.Unita.Etichetta, Volume: iv.Unita.Volume,
@@ -996,11 +1009,27 @@ func (s *server) apiCancelJob(w http.ResponseWriter, r *http.Request) {
 
 // --- Importazione dalla chiavetta --------------------------------------------------------------------
 
+// toImportLocked conta i brani di una chiavetta letta ("" = quella delle
+// playlist) che non sono ancora nelle playlist.
+func (s *server) toImportLocked(vol string) int {
+	_, groups := s.importPreviewLocked(vol)
+	n := 0
+	for _, g := range groups {
+		n += len(g.Brani)
+	}
+	return n
+}
+
 func (s *server) apiImportPreview(w http.ResponseWriter, r *http.Request) {
+	vol := r.URL.Query().Get("volume")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st, groups := s.importPreviewLocked()
-	out := map[string]any{"gruppi": groups}
+	if vol != "" && s.chiav[vol] == nil {
+		fail(w, http.StatusNotFound, "Questa chiavetta non è stata letta.")
+		return
+	}
+	st, groups := s.importPreviewLocked(vol)
+	out := map[string]any{"gruppi": groups, "principale": vol == "" || vol == s.lib.Chiavetta}
 	if st != nil {
 		out["chiavetta"] = st.Unita.nome()
 		out["letta"] = humanAge(st.Letta)
@@ -1015,6 +1044,7 @@ func (s *server) apiImportPreview(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) apiImport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Volume string         `json:"volume"`
 		Gruppi []sceltaImport `json:"gruppi"`
 	}
 	if err := readBody(r, &req, 1<<20); err != nil {
@@ -1022,10 +1052,32 @@ func (s *server) apiImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	lists, songs := s.importLocked(req.Gruppi, userOf(r))
+	if req.Volume != "" && s.chiav[req.Volume] == nil {
+		s.mu.Unlock()
+		fail(w, http.StatusNotFound, "Questa chiavetta non è stata letta.")
+		return
+	}
+	lists, songs := s.importLocked(req.Volume, req.Gruppi, userOf(r))
 	s.mu.Unlock()
 	s.enqueue(s.enrichLibrary)
 	writeJSON(w, http.StatusOK, map[string]int{"playlist": lists, "brani": songs})
+}
+
+// apiReanalyze riconosce di nuovo i brani delle chiavette già lette (dopo
+// aver messo la chiave AcoustID, o se i servizi online non rispondevano).
+func (s *server) apiReanalyze(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	n := len(s.chiav)
+	if n > 0 {
+		s.attivita = avanzamento{Fase: "Riconosco di nuovo i brani"}
+	}
+	s.mu.Unlock()
+	if n == 0 {
+		fail(w, http.StatusConflict, "Nessuna chiavetta è stata ancora letta.")
+		return
+	}
+	s.enqueue(s.reanalyze)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // --- Piano e copia ---------------------------------------------------------------------------------------

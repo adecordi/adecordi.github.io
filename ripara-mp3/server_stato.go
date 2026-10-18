@@ -303,6 +303,9 @@ func (s *server) load() {
 			s.chiav[st.Unita.Volume] = &st
 		}
 	}
+	// i legami dei file ai brani si salvano solo con la chiavetta, e la
+	// libreria può essere cambiata dopo (un'altra chiavetta importata)
+	s.relinkAllLocked()
 	files, _ = filepath.Glob(s.path("indici", "*.json.gz"))
 	for _, f := range files {
 		var iv indiceVolume

@@ -1066,6 +1066,10 @@
       }
       h += '<button data-azione="lavoro" data-tipo="scansiona">Leggi la chiavetta</button>' +
         '<a class="bottone primario" href="#/copia">Prepara la copia</a>';
+      if (s.acoustid && (s.chiavetta || (s.altre && s.altre.length))) {
+        h += '<p><small>Se ai brani mancano artista o anno, il sito può riconoscerli di nuovo dall\'audio, senza rileggere la chiavetta.</small></p>' +
+          '<button class="piccolo" data-azione="rianalizza">Riconosci di nuovo i brani</button>';
+      }
       var rim = [];
       if (a && a.online && a.unita) {
         for (var i = 0; i < a.unita.length; i++) { if (a.unita[i].rimovibile) { rim.push(a.unita[i]); } }
@@ -1086,6 +1090,16 @@
         h += '</ul><p><small>Per passare a una chiavetta nuova: attaccale tutte e due e premi «Usa per le playlist» su quella nuova. I brani che sugli HD non ci sono vengono copiati da quella vecchia.</small></p>';
       }
       h += '</div>';
+      if (s.altre && s.altre.length) {
+        h += '<div class="riquadro"><h2>Le altre chiavette lette</h2><ul class="elenco">';
+        for (var o = 0; o < s.altre.length; o++) {
+          var x = s.altre[o];
+          h += '<li class="voce"><span class="testo"><b>' + esc(x.etichetta) + '</b><span>' + plur(x.file, '1 brano', 'brani') + ', letta ' + esc(x.letta) +
+            (x.da_importare ? '' : ', già nella sua playlist') + '</span></span>' +
+            (x.da_importare ? '<a class="bottone piccolo primario" href="#/importa/' + encodeURIComponent(x.volume) + '">Fanne una playlist</a>' : '') + '</li>';
+        }
+        h += '</ul><p><small>I brani di un\'altra chiavetta diventano una playlist col suo nome. Con il prossimo OK vengono copiati sulla chiavetta delle playlist, presi dagli HD o da quella chiavetta se è attaccata.</small></p></div>';
+      }
       h += '<div class="riquadro"><h2>Per quale autoradio?</h2>' +
         '<label class="voce"><input type="radio" name="formato" value="tesla"' + (tesla() ? ' checked' : '') + '><span class="testo"><b>Tesla</b>' +
         '<span>Tutto nella cartella Music, una cartella per playlist, numero davanti al nome per tenere l\'ordine</span></span></label>' +
@@ -1198,6 +1212,16 @@
     });
   };
 
+  azioni.rianalizza = function (el) {
+    el.disabled = true;
+    api('POST', '/api/rianalizza', {}, function (err) {
+      el.disabled = false;
+      if (err) { avviso(err, true); return; }
+      avviso('Il sito riconosce di nuovo i brani: ci vuole qualche minuto.');
+      aggiornaStato();
+    });
+  };
+
   azioni.svuota = function () {
     if (!window.confirm('Cancellare davvero tutti i file nella cartella _Tolti della chiavetta? Non si possono recuperare.')) { return; }
     api('POST', '/api/lavori', { tipo: 'svuota' }, function (err) {
@@ -1209,19 +1233,24 @@
 
   // --- Importazione --------------------------------------------------------------------------------------------
 
-  var gruppiImport = null;
+  var gruppiImport = null, volImport = '';
 
   function vistaImporta() {
     caricando();
-    api('GET', '/api/importa', null, function (err, r) {
+    volImport = rotta.parti[1] || '';
+    api('GET', '/api/importa' + (volImport ? '?volume=' + encodeURIComponent(volImport) : ''), null, function (err, r) {
       if (err) { errore(err); return; }
       gruppiImport = r.gruppi || [];
-      var h = '<p><a href="#/chiavetta">Torna alla chiavetta</a></p><h1>Brani nuovi sulla chiavetta</h1>';
+      var h = '<p><a href="#/chiavetta">Torna alla chiavetta</a></p><h1>' +
+        (r.principale ? 'Brani nuovi sulla chiavetta' : 'La chiavetta «' + esc(r.chiavetta || '') + '» come playlist') + '</h1>';
       if (!gruppiImport.length) {
-        vista.innerHTML = h + '<p class="vuoto">Tutti i brani della chiavetta sono già nelle playlist.</p>';
+        vista.innerHTML = h + '<p class="vuoto">' + (r.principale ? 'Tutti i brani della chiavetta sono già nelle playlist.' :
+          'Tutti i brani di questa chiavetta sono già nella sua playlist.') + '</p>';
         return;
       }
-      h += '<p class="tenue">Ogni cartella della chiavetta diventa una playlist. Puoi cambiare il nome, aggiungerla a una playlist che c\'è già o lasciarla fuori.</p>';
+      h += '<p class="tenue">Ogni cartella della chiavetta diventa una playlist' +
+        (r.principale ? '' : ', che con il prossimo OK verrà copiata sulla chiavetta delle playlist') +
+        '. Puoi cambiare il nome, aggiungerla a una playlist che c\'è già o lasciarla fuori.</p>';
       for (var i = 0; i < gruppiImport.length; i++) {
         var g = gruppiImport[i];
         var opz = '<option value="">una playlist nuova</option>';
@@ -1256,7 +1285,7 @@
       });
     }
     el.disabled = true;
-    api('POST', '/api/importa', { gruppi: scelte }, function (err, r) {
+    api('POST', '/api/importa', { volume: volImport, gruppi: scelte }, function (err, r) {
       el.disabled = false;
       if (err) { avviso(err, true); return; }
       avviso('Importati ' + r.brani + ' brani' + (r.playlist ? ' in ' + plur(r.playlist, 'una playlist nuova', 'playlist nuove') : '') + '.');
