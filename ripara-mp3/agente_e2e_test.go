@@ -463,3 +463,111 @@ func TestTeslaNewStick(t *testing.T) {
 		t.Errorf("dopo il cambio d'ordine: %v", moved.Piano.Ops)
 	}
 }
+
+// Un'altra chiavetta letta diventa una playlist a sé, col suo nome: un brano
+// che c'è già resta uno solo, quelli nuovi si copiano da lei sulla chiavetta
+// delle playlist.
+func TestOtherStickAsPlaylist(t *testing.T) {
+	ffmpegAvailable(t)
+	mbMinInterval = 10 * time.Millisecond
+	deezerMinInterval, itunesMinInterval = 0, 0
+	tmp := t.TempDir()
+	e := &e2e{t: t, tmp: tmp, raw: filepath.Join(tmp, "raw")}
+	os.MkdirAll(e.raw, 0o755)
+	auto := filepath.Join(tmp, "AUTO")
+	bis := filepath.Join(tmp, "BIS")
+	fake, _ := fakeServer(t, fakeImages{deezer: coloredJPEG(t, 1000, 200, 30, 30), itunes: coloredJPEG(t, 1000, 30, 200, 30), caa: coloredJPEG(t, 1200, 30, 30, 200)})
+
+	bohemian := e.mp3(300, 20, "128k")
+	africa := e.mp3(850, 20, "128k")
+	write(t, filepath.Join(auto, "Viaggio/bohemian.mp3"), withTags(bohemian, &songTags{Artist: "Queen", Title: "Bohemian Rhapsody"}))
+	// sulla seconda lo stesso brano senza tag, più uno nuovo
+	write(t, filepath.Join(bis, "bohemian.mp3"), withTags(bohemian, nil))
+	write(t, filepath.Join(bis, "africa.mp3"), withTags(africa, &songTags{Artist: "Toto", Title: "Africa", Album: "Toto IV", Year: 1982}))
+	bisBefore := treeHashes(t, bis)
+
+	drives := listDrivesFn
+	listDrivesFn = func() []driveInfo {
+		return []driveInfo{{root: auto, label: "AUTO", removable: true, serial: "AAAA-0001", free: 1 << 30},
+			{root: bis, label: "BIS", removable: true, serial: "BBBB-0002", free: 1 << 30}}
+	}
+	defer func() { listDrivesFn = drives }()
+
+	s, ts := newTestServer(t, options{mbURL: fake.URL, deezerURL: fake.URL, itunesURL: fake.URL + "/", caaURL: fake.URL})
+	c := webReq{t, ts}
+	s.mu.Lock()
+	token := s.newAgentLocked("PC", version, "decordi")
+	s.mu.Unlock()
+	a := newAgent(options{site: ts.URL, cacheDir: filepath.Join(tmp, "agente"), noInstall: true, backupDir: filepath.Join(tmp, "copie")})
+	a.cfg = agentConfig{Sito: ts.URL, Token: token}
+
+	// la prima letta è quella delle playlist
+	for _, vol := range []string{"AAAA-0001", "BBBB-0002"} {
+		c.do("POST", "/api/lavori", map[string]string{"tipo": "scansiona", "volume": vol}, nil)
+		stepAgent(t, a)
+		waitIdle(t, s)
+	}
+	c.do("POST", "/api/importa", map[string]any{"gruppi": []sceltaImport{{Chiave: "Viaggio", Nome: "Viaggio", Includi: true}}}, nil)
+	// la seconda è stata salvata prima dell'importazione: dopo un riavvio
+	// del sito il suo Bohemian deve essere ancora quello della libreria
+	s2, _ := newTestServer(t, options{dataDir: s.o.dataDir})
+	if s2.chiav["BBBB-0002"].Legami["bohemian.mp3"] == "" {
+		t.Error("dopo il riavvio la seconda chiavetta ha perso i legami con la libreria")
+	}
+
+	var st struct {
+		Altre []struct {
+			Volume      string `json:"volume"`
+			DaImportare int    `json:"da_importare"`
+		} `json:"altre"`
+	}
+	c.do("GET", "/api/stato", nil, &st)
+	if len(st.Altre) != 1 || st.Altre[0].Volume != "BBBB-0002" || st.Altre[0].DaImportare != 2 {
+		t.Fatalf("altre chiavette: %+v", st.Altre)
+	}
+	var prev struct {
+		Gruppi     []gruppoImport `json:"gruppi"`
+		Principale bool           `json:"principale"`
+	}
+	c.do("GET", "/api/importa?volume=BBBB-0002", nil, &prev)
+	if prev.Principale || len(prev.Gruppi) != 1 || prev.Gruppi[0].Nome != "BIS" || len(prev.Gruppi[0].Brani) != 2 {
+		t.Fatalf("anteprima: %+v", prev)
+	}
+	var imp struct{ Playlist, Brani int }
+	c.do("POST", "/api/importa", map[string]any{"volume": "BBBB-0002", "gruppi": []sceltaImport{{Nome: "BIS", Includi: true}}}, &imp)
+	if imp.Playlist != 1 || imp.Brani != 1 {
+		t.Fatalf("importati: %+v (doveva esserci un solo brano nuovo)", imp)
+	}
+	waitIdle(t, s)
+	prev.Gruppi = nil
+	c.do("GET", "/api/importa?volume=BBBB-0002", nil, &prev)
+	if len(prev.Gruppi) != 0 {
+		t.Errorf("dopo l'importazione restano brani: %+v", prev.Gruppi)
+	}
+	if code := c.do("GET", "/api/importa?volume=CCCC-0003", nil, nil); code != 404 {
+		t.Errorf("chiavetta mai letta: %d invece di 404", code)
+	}
+
+	var plan struct {
+		Piano piano `json:"piano"`
+	}
+	c.do("GET", "/api/piano", nil, &plan)
+	t.Logf("piano: %v %v %v", plan.Piano.Ops, plan.Piano.Conteggi, plan.Piano.Avvisi)
+	c.do("POST", "/api/piano/"+plan.Piano.ID+"/conferma", map[string]bool{"backup": true}, nil)
+	stepAgent(t, a)
+	waitIdle(t, s)
+	got := strings.Join(listTree(t, auto), "\n")
+	for _, want := range []string{"Music/BIS/01 - Toto - Africa - 1982.mp3", "Music/BIS/02 - Queen - Bohemian Rhapsody - 1975.mp3",
+		"Music/Viaggio/01 - Queen - Bohemian Rhapsody - 1975.mp3"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("manca %s nella chiavetta:\n%s", want, got)
+		}
+	}
+	_, in, b := readSongTags(t, filepath.Join(auto, "Music", "BIS", "01 - Toto - Africa - 1982.mp3"))
+	if !bytes.Equal(audioPayload(b, in), africa) {
+		t.Error("Africa: audio diverso")
+	}
+	if fmt.Sprint(treeHashes(t, bis)) != fmt.Sprint(bisBefore) {
+		t.Error("l'altra chiavetta è stata modificata")
+	}
+}

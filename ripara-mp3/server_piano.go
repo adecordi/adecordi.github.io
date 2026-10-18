@@ -513,7 +513,8 @@ func (s *server) planLocked() *piano {
 	for v, iv := range s.dischi {
 		in.labels[v] = iv.Unita.nome()
 	}
-	// le altre chiavette lette (la vecchia, quando si passa a una nuova)
+	// le altre chiavette lette (la vecchia, quando si passa a una nuova, o
+	// una importata come playlist)
 	vols := make([]string, 0, len(s.chiav))
 	for v := range s.chiav {
 		vols = append(vols, v)
@@ -524,7 +525,7 @@ func (s *server) planLocked() *piano {
 		if v == s.lib.Chiavetta {
 			continue
 		}
-		in.labels[v] = st.Unita.nome() + " (chiavetta vecchia)"
+		in.labels[v] = st.Unita.nome() + " (altra chiavetta)"
 		for _, f := range st.File {
 			if id := st.Legami[f.P]; id != "" && f.Fmt == "" && !f.Rov {
 				in.altre[id] = append(in.altre[id], fonte{Tipo: "disco", Volume: v, P: f.P, S: f.S, M: f.M})

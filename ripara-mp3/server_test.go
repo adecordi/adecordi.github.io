@@ -561,6 +561,75 @@ func TestProposalsWithAI(t *testing.T) {
 	}
 }
 
+// Un file senza artista non si collega per nome (la chiave sarebbe vuota per
+// tutti) ma tiene il legame avuto all'importazione; il brano non prende
+// l'audio di un file che non è il suo.
+func TestLinkWithoutArtist(t *testing.T) {
+	s, _ := newTestServer(t, options{})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lib.Brani["b1"] = &brano{ID: "b1", Titolo: "Uno", Durata: 200, Audio: []string{"a1"}}
+	s.lib.Brani["b2"] = &brano{ID: "b2", Titolo: "Due", Durata: 202}
+	st := &statoChiavetta{Unita: unita{Volume: "AAAA-0001"},
+		File: []fileChiavetta{
+			{P: "uno.mp3", AU: "a1", Dur: 200},
+			{P: "due.mp3", AU: "x2", Dur: 202, Rov: true},
+			{P: "tre.mp3", AU: "a3", Dur: 201},
+		},
+		Finali: map[string]*finale{"uno.mp3": {Tag: songTags{Title: "Uno"}}, "due.mp3": {Tag: songTags{Title: "Due"}},
+			"tre.mp3": {Tag: songTags{Title: "Tre"}}},
+		Legami: map[string]string{"due.mp3": "b2"}}
+	s.linkFilesLocked(st)
+	if st.Legami["uno.mp3"] != "b1" || st.Legami["due.mp3"] != "b2" || st.Legami["tre.mp3"] != "" {
+		t.Errorf("legami: %v", st.Legami)
+	}
+	if len(s.lib.Brani["b1"].Audio) != 1 || len(s.lib.Brani["b2"].Audio) != 0 {
+		t.Errorf("audio dei brani: %v %v", s.lib.Brani["b1"].Audio, s.lib.Brani["b2"].Audio)
+	}
+}
+
+// Riconoscere di nuovo una chiavetta già letta aggiorna i brani presi dai suoi
+// file, ma non quelli corretti a mano dal sito.
+func TestReanalyze(t *testing.T) {
+	s, ts := newTestServer(t, options{})
+	s.mu.Lock()
+	st := &statoChiavetta{Unita: unita{Volume: "AAAA-0001", Etichetta: "AUTO"}, Letta: time.Now(),
+		File: []fileChiavetta{
+			{P: "uno.mp3", AU: "a1", Dur: 200, Tag: songTags{Title: "uno"}},
+			{P: "due.mp3", AU: "a2", Dur: 200, Tag: songTags{Title: "due"}},
+		},
+		Finali: map[string]*finale{"uno.mp3": {Tag: songTags{Title: "uno"}}, "due.mp3": {Tag: songTags{Title: "due"}}},
+		Legami: map[string]string{"uno.mp3": "b1", "due.mp3": "b2"}}
+	s.chiav[st.Unita.Volume] = st
+	s.lib.Chiavetta = st.Unita.Volume
+	s.lib.Brani["b1"] = &brano{ID: "b1", Titolo: "uno", Origine: "chiavetta", Durata: 200, Audio: []string{"a1"}, Cercato: true}
+	s.lib.Brani["b2"] = &brano{ID: "b2", Artista: "Scelto a mano", Titolo: "Due", Origine: "chiavetta", Durata: 200, Audio: []string{"a2"}, Cercato: true}
+	s.lib.Playlist = []*playlist{{ID: "p1", Nome: "AUTO", Tipo: tipoCartella, Brani: []string{"b1", "b2"}}}
+	// nel frattempo si sa di più sui file (qui dai tag, dal vivo da AcoustID)
+	st.File[0].Tag = songTags{Artist: "Queen", Title: "Bohemian Rhapsody", Year: 1975}
+	st.File[1].Tag = songTags{Artist: "Toto", Title: "Africa", Year: 1982}
+	s.mu.Unlock()
+
+	if code := (webReq{t, ts}).do("POST", "/api/rianalizza", map[string]any{}, nil); code != 200 {
+		t.Fatalf("rianalizza: %d", code)
+	}
+	waitIdle(t, s)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b := s.lib.Brani["b1"]; b.Artista != "Queen" || b.Titolo != "Bohemian Rhapsody" || b.Anno != 1975 {
+		t.Errorf("brano non aggiornato: %+v", b)
+	}
+	if b := s.lib.Brani["b2"]; b.Artista != "Scelto a mano" || b.Titolo != "Due" {
+		t.Errorf("il brano corretto a mano è cambiato: %+v", b)
+	}
+	if st.Finali["uno.mp3"].Tag.Artist != "Queen" || st.Finali["due.mp3"].Tag.Title != "due" {
+		t.Errorf("finali: %+v %+v", st.Finali["uno.mp3"].Tag, st.Finali["due.mp3"].Tag)
+	}
+	if st.Legami["uno.mp3"] != "b1" || st.Legami["due.mp3"] != "b2" {
+		t.Errorf("legami: %v", st.Legami)
+	}
+}
+
 func TestParseLRC(t *testing.T) {
 	r := parseLRC("[ar:Vasco]\n[00:17.50] Respiri piano\r\n[00:05.00][01:02.25] Ritornello\n[00:20.63]\nsenza tempo")
 	if len(r) != 4 || r[0].T != 5 || r[0].Testo != "Ritornello" || r[1].T != 17.5 || r[2].Testo != "" || r[3].T != 62.25 {
