@@ -50,8 +50,10 @@ type acoustidClient struct {
 	base, key string
 	web       *webClient
 	cacheFile string
-	cache     map[string]*idResult
 	badKey    bool
+
+	mu    sync.Mutex
+	cache map[string]*idResult
 }
 
 func newAcoustIDClient(base, key, cacheDir string) *acoustidClient {
@@ -62,25 +64,33 @@ func newAcoustIDClient(base, key, cacheDir string) *acoustidClient {
 		cacheFile: filepath.Join(cacheDir, "acoustid.json"),
 		cache:     map[string]*idResult{},
 	}
-	if b, err := os.ReadFile(c.cacheFile); err == nil {
-		json.Unmarshal(b, &c.cache)
-	}
+	readJSON(c.cacheFile, &c.cache)
 	return c
 }
 
 func (c *acoustidClient) save() {
-	os.MkdirAll(filepath.Dir(c.cacheFile), 0o755)
-	if b, err := json.MarshalIndent(c.cache, "", " "); err == nil {
-		os.WriteFile(c.cacheFile, b, 0o644)
+	c.mu.Lock()
+	b, err := json.MarshalIndent(c.cache, "", " ")
+	c.mu.Unlock()
+	if err == nil {
+		writeFileAtomic(c.cacheFile, b, 0o644)
 	}
 }
 
 func (c *acoustidClient) cached(key string) (*idResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	r, ok := c.cache[key]
 	if !ok || (!r.Found && time.Since(r.Checked) > 30*24*time.Hour) {
 		return nil, false
 	}
 	return r, true
+}
+
+func (c *acoustidClient) remember(key string, r *idResult) {
+	c.mu.Lock()
+	c.cache[key] = r
+	c.mu.Unlock()
 }
 
 type acArtist struct {
@@ -340,41 +350,17 @@ func identifySongs(songs []*song, ac *acoustidClient, mb *mbClient, bin string, 
 			continue
 		}
 		progress("Riconosco", i+1, len(need), s.displayName())
-		rec, score, err := ac.match(fps[i].fp, s.info.Duration, s.final.Artist, s.final.Title)
+		ok, err := identifyOne(ac, mb, s, fps[i].fp, fps[i].keys)
 		if err == errBadKey {
 			break
 		}
 		if err != nil {
-			if ac.web.offline {
+			if ac.web.isOffline() {
 				break
 			}
 			continue
 		}
-		r := &idResult{Checked: time.Now()}
-		cacheIt := true
-		if rec != nil {
-			r.Found, r.Recording, r.Score = true, rec.ID, score
-			if mr, err := mb.recording(rec.ID); err == nil && mr.Found {
-				r.Artist, r.Title = mr.Artist, mr.Title
-				r.Album, r.Year, r.Track, r.TrackTotal = mr.Album, mr.Year, mr.Track, mr.TrackTotal
-				r.ReleaseGroup, r.Release = mr.ReleaseGroup, mr.Release
-				if mr.AlbumIsComp {
-					r.Album, r.Track, r.TrackTotal, r.ReleaseGroup, r.Release = "", 0, 0, "", ""
-				}
-			} else {
-				// MusicBrainz non risponde: bastano i dati di AcoustID, ma
-				// la prossima volta si riprova per avere anche anno e traccia
-				r.Artist, r.Title, r.Album = rec.artist(), rec.Title, rec.album()
-				cacheIt = err == errNotFound
-			}
-		}
-		if cacheIt {
-			for _, k := range fps[i].keys {
-				ac.cache[k] = r
-			}
-		}
-		if r.Found {
-			s.applyIdentified(r)
+		if ok {
 			found++
 		}
 		if i%20 == 19 {
@@ -383,4 +369,41 @@ func identifySongs(songs []*song, ac *acoustidClient, mb *mbClient, bin string, 
 	}
 	ac.save()
 	return found, total
+}
+
+// identifyOne riconosce un brano dalla sua impronta: chiede ad AcoustID,
+// completa con MusicBrainz e ricorda il risultato con le chiavi indicate.
+// Restituisce true se il brano è stato riconosciuto (e corretto).
+func identifyOne(ac *acoustidClient, mb *mbClient, s *song, fp string, keys []string) (bool, error) {
+	rec, score, err := ac.match(fp, s.info.Duration, s.final.Artist, s.final.Title)
+	if err != nil {
+		return false, err
+	}
+	r := &idResult{Checked: time.Now()}
+	cacheIt := true
+	if rec != nil {
+		r.Found, r.Recording, r.Score = true, rec.ID, score
+		if mr, err := mb.recording(rec.ID); err == nil && mr.Found {
+			r.Artist, r.Title = mr.Artist, mr.Title
+			r.Album, r.Year, r.Track, r.TrackTotal = mr.Album, mr.Year, mr.Track, mr.TrackTotal
+			r.ReleaseGroup, r.Release = mr.ReleaseGroup, mr.Release
+			if mr.AlbumIsComp {
+				r.Album, r.Track, r.TrackTotal, r.ReleaseGroup, r.Release = "", 0, 0, "", ""
+			}
+		} else {
+			// MusicBrainz non risponde: bastano i dati di AcoustID, ma
+			// la prossima volta si riprova per avere anche anno e traccia
+			r.Artist, r.Title, r.Album = rec.artist(), rec.Title, rec.album()
+			cacheIt = err == errNotFound
+		}
+	}
+	if cacheIt {
+		for _, k := range keys {
+			ac.remember(k, r)
+		}
+	}
+	if r.Found {
+		s.applyIdentified(r)
+	}
+	return r.Found, nil
 }

@@ -49,7 +49,7 @@ Alcuni brani hanno tag del tutto sbagliati, per esempio titolo "Easy" e artista 
 
 Serve una **chiave gratuita**, da chiedere una sola volta:
 1. apri https://acoustid.org/new-application e accedi (va bene anche un account Google);
-2. compila il modulo (nome: `RiparaMP3`, versione: `1.2`, la tua email) e conferma;
+2. compila il modulo (nome: `RiparaMP3`, versione: `1.3`, la tua email) e conferma;
 3. copia la **API key** che compare;
 4. avvia RiparaMP3: alla domanda sulla chiave incollala nella finestra (tasto destro oppure Ctrl+V) e premi Invio.
 
@@ -96,6 +96,25 @@ Le prime due hanno le immagini pubblicate dalle case discografiche, pulite e in 
 - La ricerca su Internet funziona solo per i brani di cui si conoscono artista e titolo. MusicBrainz permette una ricerca al secondo, quindi per raccolte grandi ci vuole qualche minuto. Le copertine si cercano una volta per album e restano in memoria per le volte successive.
 - Le compilation si riconoscono dall'artista dell'album, dal titolo e da quanti artisti diversi ci sono nello stesso album: un album che si chiama per esempio "Gold" o "Singles" viene trattato come raccolta. Se l'album originale non si trova, i tag restano com'erano.
 
+## Collegare il PC al sito delle playlist
+
+Dalla versione 1.3 lo stesso programma può anche fare da **collegamento** con il sito delle playlist: dal sito (anche dal telefono) si decidono le playlist, e il programma sul PC legge la chiavetta, cerca i brani nei dischi e li copia.
+
+1. Apri il link che ti è stato mandato: scarica `RiparaMP3-Collega.exe`.
+2. Fai doppio clic (se Windows dice **"Windows ha protetto il PC"**: **Ulteriori informazioni** e poi **Esegui comunque**). Il programma si collega da solo al sito.
+3. Alla domanda **"Vuoi che parta da solo quando accendi il PC?"** rispondi come preferisci. Sul desktop compare l'icona **"Musica - collega al sito"** per riaprirlo.
+4. **Lascia aperta la finestra** (puoi ridurla a icona) con la chiavetta attaccata. Il resto si fa dal sito.
+
+Cosa fa sulla chiavetta, quando dal sito si dà l'OK:
+
+- ogni playlist diventa una **cartella**; i brani si chiamano `Artista - Titolo - Anno.mp3`, con tag e copertina ufficiale;
+- le playlist "proposte" diventano file **.m3u**, che puntano ai brani già presenti senza copiarli due volte (i brani che stanno solo lì vanno nella cartella `Altri brani`);
+- i brani mancanti o rovinati vengono copiati dai dischi del PC;
+- i file che non stanno più in nessuna playlist **non vengono cancellati**: finiscono nella cartella `_Tolti`;
+- prima di riscrivere un brano ne fa una copia sul PC, in `Musica\RiparaMP3 backup <data>`.
+
+Una chiavetta organizzata così contiene il file `RiparaMP3-playlist.json`: in quel caso `RiparaMP3.exe` da solo non la tocca, perché metterebbe tutti i brani nella cartella principale e le playlist andrebbero perse.
+
 ## Opzioni (per utenti esperti)
 
 Si possono passare da riga di comando, per esempio `RiparaMP3.exe --chiavetta E:\ --offline`:
@@ -112,15 +131,20 @@ Si possono passare da riga di comando, per esempio `RiparaMP3.exe --chiavetta E:
 | `--non-riconoscere` | non riconosce i brani dall'audio |
 | `--tieni-copertine` | tiene le copertine già presenti nei brani e cerca solo quelle che mancano |
 | `--si` | risponde sì a tutte le domande |
+| `--collega --sito URL` | fa da collegamento con il sito delle playlist (anche con il nome `RiparaMP3-Collega.exe`) |
+| `--server` | avvia il sito delle playlist (sul server; vedi le altre opzioni con `--help`) |
 
 ## Per chi sviluppa
 
-Il programma è scritto in Go.
+Il programma è scritto in Go. Lo stesso eseguibile ha tre modi: la console di sempre, l'agente (`agente*.go`, che parla con il sito solo con richieste in uscita, `proto.go`) e il sito (`server*.go`, pagina in `web/`, scritta in ES5 per i vecchi iPad).
 
 ```sh
-go test ./...                        # i test usano ffmpeg per creare mp3 di prova
+go test ./...                        # i test usano ffmpeg per creare mp3 di prova (e fpcalc, se c'è)
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o RiparaMP3.exe .
+go build -o riparamp3 .              # il sito: riparamp3 --server --indirizzo 127.0.0.1:8036 ...
 ```
+
+Il riconoscimento dal microfono del sito usa [songrec](https://github.com/marin-m/SongRec) (deve essere installato sul server) e `ffmpeg`. Le playlist proposte usano Gemini o Groq, se sul server ci sono le chiavi.
 
 ## Componenti di terze parti
 

@@ -17,16 +17,24 @@ import (
 )
 
 type songTags struct {
-	Title, Artist, Album, AlbumArtist string
-	Genre, Composer, Comment          string
-	Lyrics, LyricsLang                string
-	Year                              int
-	Track, TrackTotal                 int
-	Disc, DiscTotal                   int
-	Picture                           []byte
-	Format                            string
-	HasV1                             bool
-	Compilation                       bool // flag "compilation" di iTunes (TCMP)
+	Title       string `json:"title,omitempty"`
+	Artist      string `json:"artist,omitempty"`
+	Album       string `json:"album,omitempty"`
+	AlbumArtist string `json:"album_artist,omitempty"`
+	Genre       string `json:"genre,omitempty"`
+	Composer    string `json:"composer,omitempty"`
+	Comment     string `json:"comment,omitempty"`
+	Lyrics      string `json:"lyrics,omitempty"`
+	LyricsLang  string `json:"lyrics_lang,omitempty"`
+	Year        int    `json:"year,omitempty"`
+	Track       int    `json:"track,omitempty"`
+	TrackTotal  int    `json:"track_total,omitempty"`
+	Disc        int    `json:"disc,omitempty"`
+	DiscTotal   int    `json:"disc_total,omitempty"`
+	Picture     []byte `json:"-"`
+	Format      string `json:"format,omitempty"`
+	HasV1       bool   `json:"v1,omitempty"`
+	Compilation bool   `json:"comp,omitempty"` // flag "compilation" di iTunes (TCMP)
 }
 
 // --- Lettura -----------------------------------------------------------------
@@ -560,6 +568,19 @@ func safeFileName(s string, maxLen int) string {
 		s += "_"
 	}
 	return s
+}
+
+// playlistFileName è il nome (senza estensione) di un brano nelle cartelle
+// delle playlist: "Artista - Titolo - Anno", senza l'anno se non si conosce.
+func playlistFileName(t songTags) string {
+	name := t.Title
+	if t.Artist != "" {
+		name = t.Artist + " - " + t.Title
+	}
+	if t.Year > 0 {
+		name += " - " + strconv.Itoa(t.Year)
+	}
+	return safeFileName(name, 140)
 }
 
 // --- Scrittura ---------------------------------------------------------------

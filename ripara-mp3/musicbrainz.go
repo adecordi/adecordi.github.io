@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"math"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,27 +38,45 @@ type mbClient struct {
 	base      string
 	web       *webClient
 	cacheFile string
-	cache     map[string]*mbResult
+
+	mu    sync.Mutex
+	cache map[string]*mbResult
 }
 
 func newMBClient(base, cacheDir string) *mbClient {
 	c := &mbClient{
 		base:      strings.TrimRight(base, "/"),
 		web:       newWebClient(mbMinInterval),
-		cacheFile: filepath.Join(cacheDir, "musicbrainz-v2.json"),
+		// v3: dalla 1.3 si chiedono 100 risultati e si usa la prima data di
+		// uscita; i risultati della v2 (25 risultati) a volte avevano l'anno
+		// di una raccolta invece di quello originale
+		cacheFile: filepath.Join(cacheDir, "musicbrainz-v3.json"),
 		cache:     map[string]*mbResult{},
 	}
-	if b, err := os.ReadFile(c.cacheFile); err == nil {
-		json.Unmarshal(b, &c.cache)
-	}
+	readJSON(c.cacheFile, &c.cache)
 	return c
 }
 
 func (c *mbClient) save() {
-	os.MkdirAll(filepath.Dir(c.cacheFile), 0o755)
-	if b, err := json.MarshalIndent(c.cache, "", " "); err == nil {
-		os.WriteFile(c.cacheFile, b, 0o644)
+	c.mu.Lock()
+	b, err := json.MarshalIndent(c.cache, "", " ")
+	c.mu.Unlock()
+	if err == nil {
+		writeFileAtomic(c.cacheFile, b, 0o644)
 	}
+}
+
+func (c *mbClient) cached(key string) (*mbResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, ok := c.cache[key]
+	return r, ok
+}
+
+func (c *mbClient) remember(key string, r *mbResult) {
+	c.mu.Lock()
+	c.cache[key] = r
+	c.mu.Unlock()
 }
 
 type mbArtistCredit []struct {
@@ -109,9 +127,20 @@ type mbSearch struct {
 		Score        int            `json:"score"`
 		Title        string         `json:"title"`
 		Length       int            `json:"length"`
+		FirstRelease string         `json:"first-release-date"`
 		ArtistCredit mbArtistCredit `json:"artist-credit"`
 		Releases     []mbRelease    `json:"releases"`
 	} `json:"recordings"`
+}
+
+// earlierYear abbassa l'anno se la data indicata è più vecchia.
+func earlierYear(year int, date string) int {
+	if len(date) >= 4 {
+		if y, err := strconv.Atoi(date[:4]); err == nil && y > 1000 && (year == 0 || y < year) {
+			return y
+		}
+	}
+	return year
 }
 
 func luceneQuote(s string) string {
@@ -172,11 +201,13 @@ func dateKey(d string) string {
 // disco più adatto (album in studio ufficiale, il più vecchio).
 func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, error) {
 	key := cacheKey(artist, title)
-	if r, ok := c.cache[key]; ok && (r.Found || time.Since(r.Checked) < 30*24*time.Hour) {
+	if r, ok := c.cached(key); ok && (r.Found || time.Since(r.Checked) < 30*24*time.Hour) {
 		return r, nil
 	}
+	// i brani famosi hanno decine di registrazioni (dal vivo, raccolte) con
+	// lo stesso punteggio: con pochi risultati l'originale può restare fuori
 	q := "recording:" + luceneQuote(stripParens(title)) + " AND artist:" + luceneQuote(artist)
-	body, err := c.web.get(c.base + "/ws/2/recording?fmt=json&limit=25&query=" + url.QueryEscape(q))
+	body, err := c.web.get(c.base + "/ws/2/recording?fmt=json&limit=100&query=" + url.QueryEscape(q))
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +219,7 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 	wantArtist := normKey(artist)
 	wantTitle := normKey(stripParens(title))
 	var releases []mbRelease
+	firstYear := 0
 	for _, rec := range res.Recordings {
 		if rec.Score < 70 {
 			continue
@@ -211,9 +243,13 @@ func (c *mbClient) lookup(artist, title string, duration float64) (*mbResult, er
 			out.Title = rec.Title
 		}
 		releases = append(releases, rec.Releases...)
+		firstYear = earlierYear(firstYear, rec.FirstRelease)
 	}
 	fillRelease(out, releases)
-	c.cache[key] = out
+	if out.Found {
+		out.Year = earlierYear(out.Year, strconv.Itoa(firstYear))
+	}
+	c.remember(key, out)
 	return out, nil
 }
 
@@ -280,6 +316,7 @@ func (c *mbClient) recording(id string) (*mbResult, error) {
 	}
 	var rec struct {
 		Title        string         `json:"title"`
+		FirstRelease string         `json:"first-release-date"`
 		ArtistCredit mbArtistCredit `json:"artist-credit"`
 		Releases     []mbRelease    `json:"releases"`
 	}
@@ -288,5 +325,8 @@ func (c *mbClient) recording(id string) (*mbResult, error) {
 	}
 	out := &mbResult{Found: rec.Title != "", Artist: rec.ArtistCredit.String(), Title: rec.Title, Checked: time.Now()}
 	fillRelease(out, rec.Releases)
+	if out.Found {
+		out.Year = earlierYear(out.Year, rec.FirstRelease)
+	}
 	return out, nil
 }

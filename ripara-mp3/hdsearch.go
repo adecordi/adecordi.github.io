@@ -18,6 +18,7 @@ import (
 type hdFile struct {
 	path     string
 	size     int64
+	mtime    int64
 	nameKey  string // nome del file normalizzato
 	looseKey string // come nameKey, senza numero di traccia iniziale
 	pairKey  string // "artista|titolo" ricavato dal nome del file
@@ -25,6 +26,8 @@ type hdFile struct {
 	once     sync.Once
 	tagKey   string
 	duration float64
+	tags     songTags // tag ripuliti (senza copertina), per l'indice del sito
+	kbps     int
 }
 
 type hdIndex struct {
@@ -87,6 +90,9 @@ func buildHDIndex(roots, exclude []string, progress func(dirs, mp3s int, dir str
 	for _, root := range roots {
 		root = filepath.Clean(root)
 		filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if stopRequested.Load() {
+				return fs.SkipAll
+			}
 			if err != nil {
 				if d != nil && d.IsDir() {
 					return fs.SkipDir
@@ -119,7 +125,7 @@ func buildHDIndex(roots, exclude []string, progress func(dirs, mp3s int, dir str
 			if err != nil || info.Size() < 10<<10 {
 				return nil
 			}
-			f := &hdFile{path: p, size: info.Size()}
+			f := &hdFile{path: p, size: info.Size(), mtime: info.ModTime().Unix()}
 			f.nameKey, f.looseKey, f.pairKey = fileKeys(p)
 			idx.files = append(idx.files, f)
 			idx.bySize[f.size] = append(idx.bySize[f.size], f)
@@ -171,11 +177,15 @@ func (f *hdFile) loadTags() {
 		}
 		_, t := readTags(buf)
 		f.tagKey = pairKey(cleanField(t.Artist), cleanField(t.Title))
-		f.duration = estimateDuration(buf, f.size)
+		f.duration, f.kbps = estimateDuration(buf, f.size)
+		t.Picture, t.Lyrics, t.Comment = nil, "", ""
+		f.tags = t
 	})
 }
 
-func estimateDuration(head []byte, size int64) float64 {
+// estimateDuration stima durata e bitrate medio leggendo solo l'inizio del
+// file.
+func estimateDuration(head []byte, size int64) (float64, int) {
 	start := 0
 	for {
 		n := id3v2Size(head[start:])
@@ -186,39 +196,62 @@ func estimateDuration(head []byte, size int64) float64 {
 	}
 	p, h, ok := findSync(head, start, len(head), nil, 3)
 	if !ok {
-		return 0
+		return 0, 0
 	}
 	f := frameRef{p, h.length}
 	if p+h.length <= len(head) {
 		if x := parseXing(head, f, h); x != nil && x.frames > 0 {
-			return float64(x.frames*h.samples) / float64(h.sampleRate)
+			d := float64(x.frames*h.samples) / float64(h.sampleRate)
+			kbps := h.bitrate
+			if d > 0 {
+				kbps = int(float64(size-int64(p)) * 8 / d / 1000)
+			}
+			return d, kbps
 		}
 	}
-	return float64(size-int64(p)) * 8 / float64(h.bitrate*1000)
+	return float64(size-int64(p)) * 8 / float64(h.bitrate*1000), h.bitrate
+}
+
+// loadAllTags legge i tag di tutti i file (quattro alla volta), saltando
+// quelli per cui skip dice che non serve.
+func loadAllTags(files []*hdFile, skip func(*hdFile) bool, progress func(done, total int)) {
+	var wg sync.WaitGroup
+	ch := make(chan *hdFile)
+	var mu sync.Mutex
+	done := 0
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range ch {
+				func() {
+					defer func() { recover() }()
+					f.loadTags()
+				}()
+				if progress != nil {
+					mu.Lock()
+					done++
+					n := done
+					mu.Unlock()
+					progress(n, len(files))
+				}
+			}
+		}()
+	}
+	for _, f := range files {
+		if skip != nil && skip(f) {
+			continue
+		}
+		ch <- f
+	}
+	close(ch)
+	wg.Wait()
 }
 
 func (idx *hdIndex) buildTagIndex() {
 	idx.tagOnce.Do(func() {
 		idx.byTag = map[string][]*hdFile{}
-		var wg sync.WaitGroup
-		ch := make(chan *hdFile)
-		for i := 0; i < 4; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for f := range ch {
-					func() {
-						defer func() { recover() }()
-						f.loadTags()
-					}()
-				}
-			}()
-		}
-		for _, f := range idx.files {
-			ch <- f
-		}
-		close(ch)
-		wg.Wait()
+		loadAllTags(idx.files, nil, nil)
 		for _, f := range idx.files {
 			if f.tagKey != "" {
 				idx.byTag[f.tagKey] = append(idx.byTag[f.tagKey], f)

@@ -1,0 +1,43 @@
+{
+ "matches": [
+  {
+   "frequencyskew": -0.0016096234,
+   "id": "232896910",
+   "offset": 54.087578125,
+   "timeskew": -0.0012791753
+  }
+ ],
+ "timestamp": 1289346296,
+ "track": {
+  "key": "10139334",
+  "title": "Albachiara",
+  "subtitle": "Vasco Rossi",
+  "isrc": "ITB008470507",
+  "genres": {
+   "primary": "Pop"
+  },
+  "images": {
+   "coverart": "https://is1-ssl.mzstatic.com/image/thumb/Music/13/64/1c/mzi.chrndkkt.jpg/400x400cc.jpg",
+   "coverarthq": "https://is1-ssl.mzstatic.com/image/thumb/Music/13/64/1c/mzi.chrndkkt.jpg/400x400cc.jpg"
+  },
+  "sections": [
+   {
+    "type": "SONG",
+    "metadata": [
+     {
+      "text": "Albachiara (Non siamo mica gli americani)",
+      "title": "Album"
+     },
+     {
+      "text": "Ricordi",
+      "title": "Label"
+     },
+     {
+      "text": "1979",
+      "title": "Released"
+     }
+    ]
+   }
+  ]
+ }
+}
