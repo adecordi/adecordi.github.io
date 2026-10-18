@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,24 @@ type agent struct {
 	pc      string
 	inCorso atomic.Value // id del lavoro in corso
 	errMsg  string       // ultimo errore di collegamento mostrato
+}
+
+// defaultSite è l'indirizzo del sito; si mette alla compilazione con
+// -ldflags "-X main.defaultSite=https://..." (il sorgente è pubblico).
+var defaultSite = ""
+
+var reTicketName = regexp.MustCompile(`(?i)collega[-_]([A-Za-z0-9_-]{16,64})`)
+
+// ticketFromName legge il biglietto dal nome del file scaricato dal sito
+// (RiparaMP3-Collega-<biglietto>.exe). Il biglietto sta nel nome e non dentro
+// il programma: così il file è identico per tutti e l'antivirus lo
+// riconosce, invece di vederne uno mai visto a ogni scaricamento.
+func ticketFromName(exe string) string {
+	base := strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
+	if m := reTicketName.FindStringSubmatch(base); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 func newAgent(o options) *agent {
@@ -79,19 +98,25 @@ func runAgent(o options) error {
 	}
 	a := newAgent(o)
 	exe, _ := os.Executable()
-	ov, hasOv := readOverlay(exe)
+	ov, hasOv := readOverlay(exe) // programmi scaricati con la versione 1.3
+	ticket := ticketFromName(exe)
+	if ticket == "" && hasOv {
+		ticket = ov.Biglietto
+	}
 	switch {
 	case o.site != "":
 		a.cfg.Sito = o.site
 	case a.cfg.Sito == "" && hasOv:
 		a.cfg.Sito = ov.Sito
+	case a.cfg.Sito == "":
+		a.cfg.Sito = defaultSite
 	}
 	a.cfg.Sito = strings.TrimRight(a.cfg.Sito, "/")
 	if a.cfg.Sito == "" {
 		return errors.New("manca l'indirizzo del sito: scarica il programma dal sito delle playlist")
 	}
-	if a.cfg.Token == "" && hasOv && ov.Biglietto != "" {
-		if err := a.redeemTicket(ov.Biglietto); err != nil {
+	if a.cfg.Token == "" && ticket != "" {
+		if err := a.redeemTicket(ticket); err != nil {
 			fmt.Printf("\nIl collegamento automatico non è riuscito (%v).\n", err)
 		}
 	}
@@ -326,8 +351,10 @@ func (a *agent) heartbeat() battito {
 
 func (a *agent) loop() error {
 	fmt.Printf("\nCollegato al sito %s\n", a.cfg.Sito)
-	fmt.Println("Lascia aperta questa finestra: da qui il sito legge la chiavetta, cerca i brani")
-	fmt.Println("nei dischi e li copia. Puoi ridurla a icona.")
+	fmt.Println()
+	fmt.Println("  *** NON CHIUDERE QUESTA FINESTRA ***")
+	fmt.Println("  Da qui il sito legge la chiavetta, cerca i brani nei dischi e li copia.")
+	fmt.Println("  Puoi ridurla a icona (il trattino in alto a destra).")
 	backoff := 5 * time.Second
 	for {
 		var r rispostaBattito

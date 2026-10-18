@@ -46,6 +46,54 @@ func (s *server) apiRoutes(mux *http.ServeMux) {
 	h("POST /api/agenti/biglietto", s.apiTicket)
 	h("DELETE /api/agenti/{id}", s.apiRevoke)
 	h("GET /api/programma", s.apiProgram)
+	h("POST /api/chiavetta/usa", s.apiUseStick)
+	h("PATCH /api/impostazioni", s.apiSettings)
+	h("GET /api/testo", s.apiLyrics)
+}
+
+// apiUseStick sceglie la chiavetta su cui vanno le playlist (per esempio una
+// nuova al posto di quella vecchia che si rovina).
+func (s *server) apiUseStick(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Volume string `json:"volume"`
+	}
+	if err := readBody(r, &req, 4<<10); err != nil || req.Volume == "" {
+		fail(w, http.StatusBadRequest, "richiesta non valida")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	known := s.chiav[req.Volume] != nil
+	if ag := s.mainAgent(); ag != nil {
+		for _, u := range ag.Unita {
+			if u.Volume == req.Volume && u.Rimovibile {
+				known = true
+			}
+		}
+	}
+	if !known {
+		fail(w, http.StatusNotFound, "Chiavetta sconosciuta: attaccala al PC e riprova.")
+		return
+	}
+	s.lib.Chiavetta = req.Volume
+	s.relinkAllLocked()
+	s.saveLib()
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *server) apiSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Formato string `json:"formato"`
+	}
+	if err := readBody(r, &req, 4<<10); err != nil || (req.Formato != formatoTesla && req.Formato != formatoClassico) {
+		fail(w, http.StatusBadRequest, "richiesta non valida")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lib.Formato = req.Formato
+	s.saveLib()
+	writeJSON(w, http.StatusOK, map[string]string{"formato": req.Formato})
 }
 
 // csrf: le richieste che cambiano qualcosa devono arrivare dalla pagina del
@@ -72,6 +120,7 @@ type vistaUnita struct {
 	Indicizzato string `json:"indicizzato,omitempty"`
 	File        int    `json:"file,omitempty"`
 	Giusta      bool   `json:"giusta,omitempty"` // la chiavetta delle playlist
+	Letta       string `json:"letta,omitempty"`  // quando il sito l'ha letta
 }
 
 type vistaLavoro struct {
@@ -120,7 +169,7 @@ func (s *server) apiStato(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	out := map[string]any{"versione": version, "attivita": s.attivita, "lavori": s.recentJobsLocked(8),
 		"playlist": len(s.lib.Playlist), "brani": len(s.lib.Brani), "ai": s.ai.configured(), "acoustid": s.ac != nil,
-		"sito": s.sito, "programma": s.o.exePath != ""}
+		"sito": s.sito, "programma": s.o.exePath != "", "formato": map[bool]string{true: formatoTesla, false: formatoClassico}[s.lib.tesla()]}
 	if ag := s.mainAgent(); ag != nil {
 		v := map[string]any{"id": ag.ID, "nome": ag.Nome, "online": ag.online(), "visto": humanAge(ag.Visto), "versione": ag.Versione}
 		var units []vistaUnita
@@ -129,6 +178,15 @@ func (s *server) apiStato(w http.ResponseWriter, r *http.Request) {
 				Dimensione: u.Dimensione, Giusta: u.Volume == s.lib.Chiavetta}
 			if iv := s.dischi[u.Volume]; iv != nil {
 				vu.Indicizzato, vu.File = humanAge(iv.Aggiornato), len(iv.File)
+			}
+			if st := s.chiav[u.Volume]; st != nil {
+				vu.Letta = humanAge(st.Letta)
+				vu.File = 0
+				for _, f := range st.File {
+					if f.Fmt == "" {
+						vu.File++
+					}
+				}
 			}
 			units = append(units, vu)
 		}
@@ -881,6 +939,7 @@ func (s *server) apiNewJob(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Tipo   string   `json:"tipo"`
 		Volumi []string `json:"volumi"`
+		Volume string   `json:"volume"` // la chiavetta da leggere, se ce n'è più d'una
 	}
 	if err := readBody(r, &req, 64<<10); err != nil || jobKinds[req.Tipo] == "" {
 		fail(w, http.StatusBadRequest, "richiesta non valida")
@@ -891,10 +950,19 @@ func (s *server) apiNewJob(w http.ResponseWriter, r *http.Request) {
 	var param any
 	switch jobKinds[req.Tipo] {
 	case lvScansiona:
-		param = paramScansiona{Volume: s.lib.Chiavetta}
-		if st := s.chiav[s.lib.Chiavetta]; st == nil {
-			param = paramScansiona{} // la prima volta: l'unica chiavetta collegata
+		// quella indicata; altrimenti quella delle playlist se è attaccata;
+		// altrimenti l'unica chiavetta collegata
+		vol := req.Volume
+		if vol == "" {
+			if ag := s.mainAgent(); ag != nil {
+				for _, u := range ag.Unita {
+					if u.Rimovibile && u.Volume == s.lib.Chiavetta {
+						vol = u.Volume
+					}
+				}
+			}
 		}
+		param = paramScansiona{Volume: vol}
 	case lvIndicizza:
 		param = paramIndicizza{Volumi: req.Volumi}
 	case lvSvuota:
@@ -1134,7 +1202,7 @@ func (s *server) apiAccept(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tipo := tipoM3U
-	if req.Tipo == tipoCartella {
+	if req.Tipo == tipoCartella || s.lib.tesla() { // la Tesla non legge le .m3u
 		tipo = tipoCartella
 	}
 	pl := &playlist{ID: newID("p_"), Nome: s.uniqueNameLocked(limit(name, 60), ""), Tipo: tipo, Descrizione: p.Descrizione,

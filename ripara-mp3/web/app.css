@@ -189,6 +189,18 @@ label.campo span { display: block; font-size: 0.85rem; color: var(--tenue); marg
 .avviso.errore { background: #8e1d14; }
 .avviso.visibile { display: block; }
 
+/* karaoke */
+.karaoke-testa h1 { margin-bottom: 0; }
+.karaoke-comandi {
+  position: -webkit-sticky; position: sticky; top: 44px; z-index: 4; background: var(--sfondo);
+  padding: 6px 0; border-bottom: 1px solid var(--bordo);
+}
+.karaoke { padding: 24px 0 60vh; }
+.kriga { font-size: 1.3rem; line-height: 1.35; margin: 14px 0; color: var(--tenue); -webkit-transition: all 0.25s; transition: all 0.25s; }
+.kriga.cantata { opacity: 0.45; }
+.kriga.ora { color: var(--testo); font-weight: 700; font-size: 1.6rem; }
+.testo-semplice { font-size: 1.15rem; line-height: 1.6; margin: 12px 0; }
+
 details { margin: 8px 0; }
 summary { cursor: pointer; padding: 6px 0; }
 .link-copia { word-break: break-all; font-size: 0.85rem; background: var(--sfondo); padding: 8px; border-radius: 8px; display: block; margin: 8px 0; }

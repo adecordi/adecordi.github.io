@@ -129,6 +129,9 @@
 
   function caricando() { vista.innerHTML = '<p class="vuoto">Carico...</p>'; }
 
+  // la chiavetta va sulla Tesla: niente .m3u, tutto nella cartella Music
+  function tesla() { return !stato || stato.formato !== 'classico'; }
+
   function errore(msg) {
     vista.innerHTML = '<div class="nota err">' + esc(msg) + '</div><p><a href="#/">Torna alle playlist</a></p>';
   }
@@ -198,7 +201,7 @@
 
   function segnaScheda() {
     var mappa = { playlist: 'playlist', una: 'playlist', brano: 'playlist', cerca: 'cerca', ascolta: 'ascolta', proposte: 'proposte',
-      chiavetta: 'chiavetta', copia: 'chiavetta', importa: 'chiavetta', pc: 'pc' };
+      chiavetta: 'chiavetta', copia: 'chiavetta', importa: 'chiavetta', pc: 'pc', karaoke: 'ascolta' };
     var s = mappa[rotta.nome] || '';
     var link = document.getElementById('schede').getElementsByTagName('a');
     for (var i = 0; i < link.length; i++) {
@@ -212,7 +215,8 @@
     if (rotta.nome !== 'una') { selezione = null; }
     var v = {
       playlist: vistaPlaylist, una: vistaUna, brano: vistaBrano, cerca: vistaCerca, ascolta: vistaAscolta,
-      proposte: vistaProposte, chiavetta: vistaChiavetta, copia: vistaCopia, importa: vistaImporta, pc: vistaPC
+      proposte: vistaProposte, chiavetta: vistaChiavetta, copia: vistaCopia, importa: vistaImporta, pc: vistaPC,
+      karaoke: vistaKaraoke
     }[rotta.nome] || vistaPlaylist;
     v();
   }
@@ -261,7 +265,7 @@
       for (var i = 0; i < lista.length; i++) {
         var p = lista[i];
         h += '<a class="scheda-pl" href="#/p/' + esc(p.id) + '">' + mosaico(p.copertine) + '<span class="testo"><b>' + esc(p.nome) +
-          '<span class="tipo">' + (p.tipo === 'm3u' ? 'playlist .m3u' : 'cartella') + '</span></b>' +
+          '<span class="tipo">' + (p.tipo === 'm3u' && !tesla() ? 'playlist .m3u' : 'cartella') + '</span></b>' +
           '<small>' + plur(p.n, '1 brano', 'brani') + (p.n ? ' · ' + esc(riepilogo(p.conteggi)) : '') + '</small></span></a>';
       }
       vista.innerHTML = h;
@@ -300,8 +304,10 @@
       if (pl.brani[i].copertina && covers.indexOf(pl.brani[i].copertina) < 0) { covers.push(pl.brani[i].copertina); }
     }
     var h = '<p><a href="#/">Tutte le playlist</a></p>';
+    var dove = tesla() ? 'cartella Music\\' + pl.nome + ' sulla chiavetta' :
+      (pl.tipo === 'm3u' ? 'playlist .m3u (i brani restano nelle loro cartelle)' : 'cartella sulla chiavetta');
     h += '<div class="intestazione">' + mosaico(covers, true) + '<div><h1>' + esc(pl.nome) + '</h1>' +
-      '<small>' + plur(pl.brani.length, '1 brano', 'brani') + ' · ' + (pl.tipo === 'm3u' ? 'playlist .m3u (i brani restano nelle loro cartelle)' : 'cartella sulla chiavetta') + '</small>' +
+      '<small>' + plur(pl.brani.length, '1 brano', 'brani') + ' · ' + esc(dove) + '</small>' +
       (pl.descrizione ? '<p class="tenue">' + esc(pl.descrizione) + '</p>' : '') + '</div></div>';
     if (!selezione) {
       h += '<div class="azioni"><a class="bottone primario" href="#/cerca?p=' + esc(pl.id) + '">Aggiungi brani</a>' +
@@ -309,7 +315,7 @@
         '<div class="azioni secondarie">' +
         (pl.brani.length ? '<button class="piccolo" data-azione="seleziona">Seleziona</button>' : '') +
         '<button class="piccolo" data-azione="rinomina">Rinomina</button>' +
-        '<button class="piccolo" data-azione="cambia-tipo">' + (pl.tipo === 'm3u' ? 'Fanne una cartella' : 'Fanne una .m3u') + '</button>' +
+        (tesla() ? '' : '<button class="piccolo" data-azione="cambia-tipo">' + (pl.tipo === 'm3u' ? 'Fanne una cartella' : 'Fanne una .m3u') + '</button>') +
         '<button class="piccolo pericolo" data-azione="elimina-playlist">Elimina</button></div>';
     }
     if (pl.brani.length === 0) {
@@ -466,6 +472,7 @@
       h += '<div class="intestazione">' + cop(b.copertina, 'grande') + '<div><h1>' + esc(b.titolo) + '</h1><p>' + esc(b.artista) +
         (b.anno ? ' · ' + b.anno : '') + '</p>' + chip(r.vista.stato, r.vista.disco) +
         (r.vista.file ? '<p><small>Sulla chiavetta: ' + esc(r.vista.file) + '</small></p>' : '') + '</div></div>';
+      h += '<button class="primario" data-azione="karaoke-brano">Testo e karaoke</button>';
       h += '<div class="riquadro"><h2>Informazioni</h2>' +
         '<label class="campo"><span>Artista</span><input type="text" id="f-artista" value="' + esc(b.artista) + '"></label>' +
         '<label class="campo"><span>Titolo</span><input type="text" id="f-titolo" value="' + esc(b.titolo) + '"></label>' +
@@ -531,6 +538,11 @@
       if (err) { avviso(err, true); return; }
       vistaBrano();
     });
+  };
+
+  azioni['karaoke-brano'] = function () {
+    var b = branoCorrente.brano;
+    apriKaraoke({ brano: b.id, artista: b.artista, titolo: b.titolo });
   };
 
   azioni['togli-brano'] = function () {
@@ -687,6 +699,7 @@
 
   var ascolto = null; // registrazione in corso
   var risultatoAscolto = null;
+  var inizioRegistrazione = 0; // quando è partita (per far scorrere il karaoke a tempo)
   var SECONDI = 14;
 
   function vistaAscolta() {
@@ -702,6 +715,7 @@
         '<input type="file" id="file-audio" accept="audio/*" capture></details>';
       vista.innerHTML = h;
       document.getElementById('file-audio').onchange = function () {
+        inizioRegistrazione = 0;
         if (this.files && this.files[0]) { invia(this.files[0]); }
       };
       if (!puoRegistrare()) {
@@ -775,6 +789,7 @@
       fineRegistrazione(new Blob(pezzi, { type: rec.mimeType || opz.mimeType || 'audio/webm' }), annullata);
     };
     rec.start();
+    inizioRegistrazione = new Date().getTime();
     return { ferma: function (annulla) { annullata = annulla; if (rec.state !== 'inactive') { rec.stop(); } } };
   }
 
@@ -786,6 +801,7 @@
     proc.onaudioprocess = function (e) { buffer.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
     src.connect(proc);
     proc.connect(ctx.destination);
+    inizioRegistrazione = new Date().getTime();
     return {
       ferma: function (annulla) {
         src.disconnect();
@@ -846,12 +862,114 @@
       if (r.in_libreria && r.in_libreria.length) {
         h += '<p class="tenue">È già in: ' + esc(r.in_libreria[0].playlist.join(', ') || 'nessuna playlist') + '</p>';
       }
-      h += '<button class="primario grande" data-azione="aggiungi-shazam">Aggiungi alla playlist</button></div>';
+      h += '<button class="primario grande" data-azione="aggiungi-shazam">Aggiungi alla playlist</button>' +
+        '<button class="grande" data-azione="karaoke-ascolto">Karaoke: il testo a tempo</button></div>';
       document.getElementById('ascolta-risultato').innerHTML = h;
     });
   }
 
   azioni['aggiungi-shazam'] = function (el) { aggiungi({ shazam: risultatoAscolto }, el); };
+
+  // Shazam dice a che punto della canzone era il pezzo ascoltato: songrec
+  // ne usa 12 secondi presi a metà della registrazione, che cominciano circa
+  // 1,15 secondi dopo l'inizio.
+  azioni['karaoke-ascolto'] = function () {
+    var r = risultatoAscolto;
+    var k = { artista: r.artista, titolo: r.titolo, album: r.album };
+    if (r.offset && inizioRegistrazione) {
+      k.t0 = inizioRegistrazione;
+      k.pos0 = r.offset - 1.15;
+    }
+    apriKaraoke(k);
+  };
+
+  // --- Karaoke -----------------------------------------------------------------------------------
+
+  var karaoke = null; // { brano | artista+titolo, t0, pos0, righe, attuale }
+  var timerKaraoke = null;
+
+  function apriKaraoke(k) {
+    karaoke = k;
+    location.hash = '#/karaoke';
+  }
+
+  function vistaKaraoke() {
+    clearInterval(timerKaraoke);
+    if (!karaoke) {
+      vista.innerHTML = '<p class="vuoto">Apri un brano da una playlist e premi «Testo e karaoke», oppure fai riconoscere una canzone con «Ascolta».</p>';
+      return;
+    }
+    var k = karaoke;
+    var url = k.brano ? '/api/testo?brano=' + encodeURIComponent(k.brano) :
+      '/api/testo?artista=' + encodeURIComponent(k.artista || '') + '&titolo=' + encodeURIComponent(k.titolo) +
+      (k.album ? '&album=' + encodeURIComponent(k.album) : '');
+    caricando();
+    api('GET', url, null, function (err, r) {
+      if (err) { errore(err); return; }
+      var t = r.testo;
+      var h = '<div class="karaoke-testa"><h1>' + esc(r.titolo) + '</h1><p class="tenue">' + esc(r.artista) + '</p></div>';
+      if (!t.trovato) {
+        vista.innerHTML = h + '<div class="nota att">Non ho trovato il testo di questa canzone.</div>';
+        return;
+      }
+      if (!t.sincronizzato) {
+        h += t.semplice ? '<div class="nota info">Per questa canzone c\'è il testo ma senza i tempi: non può scorrere da solo.</div><div class="testo-semplice">' +
+          esc(t.semplice).replace(/\n/g, '<br>') + '</div>' : '<div class="nota info">È un brano strumentale: non ha testo.</div>';
+        vista.innerHTML = h;
+        return;
+      }
+      k.righe = t.righe;
+      k.attuale = -1;
+      h += '<div class="karaoke-comandi">' +
+        '<button class="primario" data-azione="kar-via" id="kar-via">' + (k.t0 ? 'Ricomincia da capo' : 'Via! (quando parte la canzone)') + '</button>' +
+        '<button class="piccolo" data-azione="kar-sposta" data-d="-1">Testo più indietro</button>' +
+        '<button class="piccolo" data-azione="kar-sposta" data-d="1">Testo più avanti</button></div>';
+      if (!k.t0) {
+        h += '<p class="tenue">Premi «Via!» quando la canzone comincia: il testo scorre a tempo. Con i due tasti lo rimetti in pari.</p>';
+      }
+      h += '<div class="karaoke" id="karaoke">';
+      for (var i = 0; i < k.righe.length; i++) {
+        h += '<p class="kriga" id="kr' + i + '">' + (esc(k.righe[i].testo) || '&nbsp;') + '</p>';
+      }
+      vista.innerHTML = h + '</div>';
+      timerKaraoke = setInterval(scorriKaraoke, 200);
+    });
+  }
+
+  function scorriKaraoke() {
+    var k = karaoke;
+    if (rotta.nome !== 'karaoke' || !k || !k.righe) { clearInterval(timerKaraoke); return; }
+    if (!k.t0) { return; }
+    var pos = k.pos0 + (new Date().getTime() - k.t0) / 1000;
+    var n = -1;
+    for (var i = 0; i < k.righe.length; i++) {
+      if (k.righe[i].t <= pos) { n = i; } else { break; }
+    }
+    if (n === k.attuale) { return; }
+    for (var j = 0; j < k.righe.length; j++) {
+      var el = document.getElementById('kr' + j);
+      if (el) { el.className = 'kriga' + (j === n ? ' ora' : (j < n ? ' cantata' : '')); }
+    }
+    k.attuale = n;
+    var cur = document.getElementById('kr' + Math.max(0, n));
+    if (cur) {
+      var y = cur.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop) - window.innerHeight / 3;
+      window.scrollTo(0, Math.max(0, y));
+    }
+  }
+
+  azioni['kar-via'] = function (el) {
+    karaoke.t0 = new Date().getTime();
+    karaoke.pos0 = 0;
+    karaoke.attuale = -2;
+    el.textContent = 'Ricomincia da capo';
+  };
+
+  azioni['kar-sposta'] = function (el) {
+    if (!karaoke.t0) { avviso('Prima premi «Via!» quando parte la canzone.'); return; }
+    karaoke.pos0 += parseFloat(el.getAttribute('data-d'));
+    karaoke.attuale = -2;
+  };
 
   // --- Proposte -------------------------------------------------------------------------------------------
 
@@ -864,7 +982,8 @@
       proposte = r;
       var h = '<div class="riga-titolo"><h1>Playlist proposte</h1><button class="primario" data-azione="genera"' + (r.in_corso ? ' disabled' : '') + '>Proponi playlist</button></div>';
       h += '<p class="tenue">Il sito raggruppa i brani simili (epoca, genere, lingua, ritmo)' + (r.ai ? ' e chiede a un\'AI di inventare gruppi a tema' : '') +
-        '. Le proposte che accetti diventano playlist .m3u: i brani non vengono copiati due volte.</p>';
+        (tesla() ? '. Le proposte che accetti diventano cartelle nella cartella Music della chiavetta (la Tesla non legge le playlist .m3u).</p>' :
+          '. Le proposte che accetti diventano playlist .m3u: i brani non vengono copiati due volte.</p>');
       if (r.in_corso) { h += '<div class="nota info">Sto preparando le proposte...</div><div class="progresso indeterminato"><div></div></div>'; }
       if (r.errore) { h += '<div class="nota att">' + esc(r.errore) + '</div>'; }
       if (r.motore && !r.in_corso) { h += '<p><small>Proposte di ' + esc(r.create) + ', con ' + esc(r.motore) + '.</small></p>'; }
@@ -882,8 +1001,10 @@
           h += '<li class="voce"><input type="checkbox" checked class="pb-' + esc(p.id) + '" value="' + esc(b.id) + '">' + cop(b.copertina) +
             '<span class="testo"><b>' + esc(b.titolo) + '</b><span>' + esc(b.artista) + (b.anno ? ' · ' + b.anno : '') + '</span></span></li>';
         }
-        h += '</ul></details><button class="primario" data-azione="accetta" data-id="' + esc(p.id) + '" data-tipo="m3u">Accetta (.m3u)</button>' +
-          '<button data-azione="accetta" data-id="' + esc(p.id) + '" data-tipo="cartella">Accetta come cartella</button>' +
+        h += '</ul></details>' + (tesla() ?
+          '<button class="primario" data-azione="accetta" data-id="' + esc(p.id) + '" data-tipo="cartella">Accetta</button>' :
+          '<button class="primario" data-azione="accetta" data-id="' + esc(p.id) + '" data-tipo="m3u">Accetta (.m3u)</button>' +
+          '<button data-azione="accetta" data-id="' + esc(p.id) + '" data-tipo="cartella">Accetta come cartella</button>') +
           '<button class="pericolo" data-azione="scarta" data-id="' + esc(p.id) + '">Scarta</button></div>';
       }
       vista.innerHTML = h;
@@ -933,7 +1054,7 @@
       } else if (!a.online) {
         h += '<div class="nota att">Il PC «' + esc(a.nome) + '» è spento o il programma è chiuso (visto ' + esc(a.visto) + '). I lavori partiranno quando si ricollega.</div>';
       }
-      h += '<div class="riquadro"><h2>La chiavetta</h2>';
+      h += '<div class="riquadro"><h2>La chiavetta delle playlist</h2>';
       if (s.chiavetta) {
         h += '<p><b>' + esc(s.chiavetta.etichetta) + '</b>: ' + plur(s.chiavetta.file, '1 brano', 'brani') + ', letta ' + esc(s.chiavetta.letta) +
           (s.chiavetta.liberi ? ', liberi ' + peso(s.chiavetta.liberi) : '') + '.</p>';
@@ -943,15 +1064,34 @@
       } else {
         h += '<p class="tenue">Non è ancora stata letta. Attacca la chiavetta al PC collegato e premi «Leggi la chiavetta».</p>';
       }
-      var collegata = '';
-      if (a && a.unita) {
-        for (var i = 0; i < a.unita.length; i++) {
-          if (a.unita[i].rimovibile) { collegata += (collegata ? ', ' : '') + a.unita[i].lettera + ' ' + (a.unita[i].etichetta || '') + (a.unita[i].giusta ? ' (quella delle playlist)' : ''); }
-        }
-      }
-      if (a && a.online) { h += '<p><small>Chiavette collegate adesso: ' + esc(collegata || 'nessuna') + '</small></p>'; }
       h += '<button data-azione="lavoro" data-tipo="scansiona">Leggi la chiavetta</button>' +
-        '<a class="bottone primario" href="#/copia">Prepara la copia</a></div>';
+        '<a class="bottone primario" href="#/copia">Prepara la copia</a>';
+      var rim = [];
+      if (a && a.online && a.unita) {
+        for (var i = 0; i < a.unita.length; i++) { if (a.unita[i].rimovibile) { rim.push(a.unita[i]); } }
+      }
+      if (a && a.online) {
+        h += '<h2>Chiavette attaccate adesso</h2>';
+        if (!rim.length) { h += '<p class="tenue">Nessuna.</p>'; }
+        h += '<ul class="elenco">';
+        for (var r = 0; r < rim.length; r++) {
+          var u = rim[r];
+          h += '<li class="voce"><span class="testo"><b>' + esc(u.lettera + ' ' + (u.etichetta || '')) + '</b><span>' +
+            (u.giusta ? 'quella delle playlist' : (u.letta ? 'letta ' + esc(u.letta) + ', ' + plur(u.file || 0, '1 brano', 'brani') : 'non ancora letta')) +
+            (u.liberi ? ', liberi ' + peso(u.liberi) : '') + '</span></span>' +
+            '<button class="piccolo" data-azione="leggi-chiavetta" data-vol="' + esc(u.volume) + '">Leggi</button>' +
+            (u.giusta ? '' : '<button class="piccolo" data-azione="usa-chiavetta" data-vol="' + esc(u.volume) + '" data-nome="' + esc(u.etichetta || u.lettera) + '">Usa per le playlist</button>') +
+            '</li>';
+        }
+        h += '</ul><p><small>Per passare a una chiavetta nuova: attaccale tutte e due e premi «Usa per le playlist» su quella nuova. I brani che sugli HD non ci sono vengono copiati da quella vecchia.</small></p>';
+      }
+      h += '</div>';
+      h += '<div class="riquadro"><h2>Per quale autoradio?</h2>' +
+        '<label class="voce"><input type="radio" name="formato" value="tesla"' + (tesla() ? ' checked' : '') + '><span class="testo"><b>Tesla</b>' +
+        '<span>Tutto nella cartella Music, una cartella per playlist, numero davanti al nome per tenere l\'ordine</span></span></label>' +
+        '<label class="voce"><input type="radio" name="formato" value="classico"' + (tesla() ? '' : ' checked') + '><span class="testo"><b>Autoradio normale</b>' +
+        '<span>Una cartella per playlist nella chiavetta; le playlist proposte come file .m3u</span></span></label>' +
+        '<button class="piccolo" data-azione="salva-formato">Salva</button></div>';
       h += '<div class="riquadro"><h2>Gli hard disk</h2>';
       if (s.dischi && s.dischi.length) {
         h += '<ul class="elenco">';
@@ -1014,6 +1154,38 @@
     api('POST', '/api/lavori', { tipo: el.getAttribute('data-tipo') }, function (err) {
       if (err) { avviso(err, true); return; }
       avviso(stato && stato.agente && stato.agente.online ? 'Fatto: il PC comincia subito.' : 'In coda: partirà quando il PC si collega.');
+      aggiornaStato();
+    });
+  };
+
+  azioni['leggi-chiavetta'] = function (el) {
+    api('POST', '/api/lavori', { tipo: 'scansiona', volume: el.getAttribute('data-vol') }, function (err) {
+      if (err) { avviso(err, true); return; }
+      avviso('Il PC comincia a leggerla.');
+      aggiornaStato();
+    });
+  };
+
+  azioni['usa-chiavetta'] = function (el) {
+    var nome = el.getAttribute('data-nome');
+    if (!window.confirm('Le playlist andranno sulla chiavetta «' + nome + '». Quella di prima resta com\'è: i brani che sugli HD non ci sono verranno copiati da lei, se è attaccata. Continuo?')) { return; }
+    var vol = el.getAttribute('data-vol');
+    api('POST', '/api/chiavetta/usa', { volume: vol }, function (err) {
+      if (err) { avviso(err, true); return; }
+      api('POST', '/api/lavori', { tipo: 'scansiona', volume: vol }, function () {
+        avviso('Fatto: la leggo, poi prepara la copia.');
+        vistaChiavetta();
+      });
+    });
+  };
+
+  azioni['salva-formato'] = function () {
+    var scelte = document.getElementsByName('formato');
+    var f = 'tesla';
+    for (var i = 0; i < scelte.length; i++) { if (scelte[i].checked) { f = scelte[i].value; } }
+    api('PATCH', '/api/impostazioni', { formato: f }, function (err) {
+      if (err) { avviso(err, true); return; }
+      avviso(f === 'tesla' ? 'Chiavetta per la Tesla.' : 'Chiavetta per un\'autoradio normale.');
       aggiornaStato();
     });
   };
@@ -1124,6 +1296,9 @@
       }
       if (c.ok) {
         voci += '<li>' + plur(c.ok, 'Un brano è già a posto', 'brani sono già a posto') + '</li>';
+      }
+      if (voci && tesla()) {
+        voci += '<li>Per la Tesla: tutto nella cartella Music, una cartella per playlist, numero davanti per tenere l\'ordine</li>';
       }
       h += '<div class="riquadro"><h2>' + (ops.copia || ops.riscrivi || ops.rinomina || ops.m3u || p.tolti.length ? 'Cosa farò' : 'Niente da fare') +
         '</h2><ul>' + (voci || '<li>Le playlist sono vuote.</li>') + '</ul>' +

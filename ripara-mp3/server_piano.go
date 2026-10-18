@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -58,8 +59,9 @@ type pianoIn struct {
 	lib      *libreria
 	stick    *statoChiavetta
 	ix       *indiceRicerca
-	attached map[string]bool   // dischi collegati adesso
-	labels   map[string]string // nome dei dischi
+	attached map[string]bool    // dischi e altre chiavette collegati adesso
+	labels   map[string]string  // nome dei dischi
+	altre    map[string][]fonte // brano -> file sani su altre chiavette lette
 	oggi     string
 	sito     string
 }
@@ -100,20 +102,27 @@ func calcolaPiano(in pianoIn) *piano {
 		Tolti: []string{}, Liste: []string{}, perBrano: map[string]rigaPiano{}}
 	lower := strings.ToLower
 
-	// 1. dove deve stare ogni brano
+	// 1. dove deve stare ogni brano. Per la Tesla tutto sta nella cartella
+	// Music, ogni playlist è una cartella (le .m3u non le legge) e i file
+	// hanno il numero davanti, perché li mette in ordine alfabetico.
+	tesla := in.lib.tesla()
+	top := ""
+	if tesla {
+		top = musicDir + "/"
+	}
 	var targets []*obiettivo
 	first := map[string]*obiettivo{} // brano -> primo posto (per le .m3u)
 	usedFolders := map[string]bool{lower(toltiDir): true, lower(altriBraniDir): true}
 	namesIn := map[string]map[string]bool{}
 	folderOf := map[string]string{}
-	mkTarget := func(folder string, b *brano, pl *playlist) {
+	mkTarget := func(folder string, b *brano, pl *playlist, prefix string) {
 		t := b.tags()
 		names := namesIn[lower(folder)]
 		if names == nil {
 			names = map[string]bool{}
 			namesIn[lower(folder)] = names
 		}
-		base := playlistFileName(t)
+		base := prefix + playlistFileName(t)
 		name := base
 		if names[lower(name)] && b.Album != "" {
 			name = safeFileName(base+" ("+b.Album+")", 150)
@@ -129,7 +138,7 @@ func calcolaPiano(in pianoIn) *piano {
 		}
 	}
 	for _, pl := range in.lib.Playlist {
-		if pl.Tipo != tipoCartella {
+		if pl.Tipo != tipoCartella && !tesla {
 			continue
 		}
 		base := safeFileName(pl.Nome, 60)
@@ -138,22 +147,34 @@ func calcolaPiano(in pianoIn) *piano {
 			folder = base + " " + strconv.Itoa(i)
 		}
 		usedFolders[lower(folder)] = true
-		folderOf[pl.ID] = folder
+		folderOf[pl.ID] = top + folder
 		seen := map[string]bool{}
+		var songs []*brano
 		for _, id := range pl.Brani {
 			if b := in.lib.Brani[id]; b != nil && !seen[id] {
 				seen[id] = true
-				mkTarget(folder, b, pl)
+				songs = append(songs, b)
 			}
+		}
+		width := 2
+		if len(songs) >= 100 {
+			width = 3
+		}
+		for i, b := range songs {
+			prefix := ""
+			if tesla {
+				prefix = fmt.Sprintf("%0*d - ", width, i+1)
+			}
+			mkTarget(top+folder, b, pl, prefix)
 		}
 	}
 	for _, pl := range in.lib.Playlist {
-		if pl.Tipo != tipoM3U {
+		if pl.Tipo != tipoM3U || tesla {
 			continue
 		}
 		for _, id := range pl.Brani {
 			if b := in.lib.Brani[id]; b != nil && first[id] == nil {
-				mkTarget(altriBraniDir, b, nil)
+				mkTarget(altriBraniDir, b, nil, "")
 			}
 		}
 	}
@@ -264,6 +285,22 @@ func calcolaPiano(in pianoIn) *piano {
 			cands = in.ix.candidati(o.b.Artista, o.b.Titolo, o.b.Album, o.b.Durata)
 		}
 		switch {
+		case len(cands) == 0 && len(in.altre[o.b.ID]) > 0:
+			// sui dischi non c'è, ma c'è su un'altra chiavetta (la vecchia,
+			// quando si passa a una nuova)
+			var fonti []fonte
+			for _, f := range in.altre[o.b.ID] {
+				if in.attached[f.Volume] && len(fonti) < 3 {
+					fonti = append(fonti, f)
+				}
+			}
+			if len(fonti) == 0 {
+				o.stato, o.disco = stStaccato, in.labels[in.altre[o.b.ID][0].Volume]
+				staccati[o.disco]++
+				continue
+			}
+			o.op = addOp(operazione{Tipo: opCopia, A: o.rel, Tag: &o.tags, Cop: o.b.Copertina, Fonti: fonti, Brano: o.b.ID})
+			o.stato, o.disco = stDisco, in.labels[fonti[0].Volume]
 		case len(cands) == 0:
 			o.stato = stManca
 			for _, f := range damaged[o.b.ID] {
@@ -316,7 +353,7 @@ func calcolaPiano(in pianoIn) *piano {
 	var m3uOps []*operazione
 	wanted := map[string]bool{}
 	for _, pl := range in.lib.Playlist {
-		if pl.Tipo != tipoM3U {
+		if pl.Tipo != tipoM3U || tesla {
 			continue
 		}
 		var entries []m3uEntry
@@ -454,8 +491,8 @@ func buildMarker(in pianoIn, folderOf map[string]string, targets []*obiettivo, l
 	li := 0
 	for _, pl := range in.lib.Playlist {
 		mp := marcatorePl{Nome: pl.Nome, Tipo: pl.Tipo, Brani: byPl[pl.ID]}
-		if pl.Tipo == tipoCartella {
-			mp.Cartella = folderOf[pl.ID]
+		if folder, ok := folderOf[pl.ID]; ok {
+			mp.Cartella = folder
 		} else if li < len(liste) {
 			mp.Cartella = liste[li]
 			li++
@@ -472,13 +509,31 @@ func buildMarker(in pianoIn, folderOf map[string]string, targets []*obiettivo, l
 // planLocked calcola il piano con lo stato attuale del sito.
 func (s *server) planLocked() *piano {
 	in := pianoIn{lib: s.lib, stick: s.chiav[s.lib.Chiavetta], ix: s.ricerca, attached: map[string]bool{}, labels: map[string]string{},
-		oggi: time.Now().In(romeTZ()).Format("2006-01-02"), sito: s.sito}
+		altre: map[string][]fonte{}, oggi: time.Now().In(romeTZ()).Format("2006-01-02"), sito: s.sito}
 	for v, iv := range s.dischi {
 		in.labels[v] = iv.Unita.nome()
 	}
+	// le altre chiavette lette (la vecchia, quando si passa a una nuova)
+	vols := make([]string, 0, len(s.chiav))
+	for v := range s.chiav {
+		vols = append(vols, v)
+	}
+	sort.Strings(vols)
+	for _, v := range vols {
+		st := s.chiav[v]
+		if v == s.lib.Chiavetta {
+			continue
+		}
+		in.labels[v] = st.Unita.nome() + " (chiavetta vecchia)"
+		for _, f := range st.File {
+			if id := st.Legami[f.P]; id != "" && f.Fmt == "" && !f.Rov {
+				in.altre[id] = append(in.altre[id], fonte{Tipo: "disco", Volume: v, P: f.P, S: f.S, M: f.M})
+			}
+		}
+	}
 	if ag := s.mainAgent(); ag != nil {
 		for _, u := range ag.Unita {
-			if !u.Rimovibile {
+			if u.Volume != s.lib.Chiavetta {
 				in.attached[u.Volume] = true
 			}
 			if u.Volume == s.lib.Chiavetta && in.stick != nil && u.Liberi > 0 {

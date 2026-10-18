@@ -88,7 +88,19 @@ type libreria struct {
 	Playlist  []*playlist       `json:"playlist"`
 	Brani     map[string]*brano `json:"brani"`
 	Chiavetta string            `json:"chiavetta,omitempty"` // la chiavetta delle playlist
+	Formato   string            `json:"formato,omitempty"`   // "tesla" (predefinito) o "classico"
 }
+
+const (
+	formatoTesla    = "tesla"
+	formatoClassico = "classico"
+	musicDir        = "Music"
+)
+
+// tesla: la chiavetta va sulla Tesla, che non legge le .m3u e mette i brani
+// in ordine alfabetico. Tutto sta nella cartella Music, ogni playlist è una
+// cartella e i file hanno il numero davanti.
+func (l *libreria) tesla() bool { return l.Formato != formatoClassico }
 
 func (l *libreria) playlistByID(id string) *playlist {
 	for _, p := range l.Playlist {

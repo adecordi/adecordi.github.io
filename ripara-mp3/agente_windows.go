@@ -4,10 +4,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -54,47 +52,43 @@ func keepAwake(on bool) {
 
 const runValue = "RiparaMP3 Collega"
 
-// installAgent copia il programma nella cartella dei programmi dell'utente,
-// mette un'icona sul desktop e, la prima volta, chiede se avviarlo con
-// Windows.
+// installAgent non installa niente: il programma resta dove è stato
+// scaricato. La versione 1.3 si copiava nella cartella dei programmi,
+// creava un collegamento con PowerShell e si metteva fra i programmi
+// all'avvio: sono proprio le mosse che gli antivirus guardano con sospetto.
+// Qui si toglie quello che aveva lasciato e l'avvio con Windows si offre
+// solo come domanda, con risposta predefinita «no».
 func installAgent(a *agent) {
 	exe, err := os.Executable()
-	base := os.Getenv("LOCALAPPDATA")
-	if err != nil || base == "" {
+	if err != nil {
 		return
 	}
-	dir := filepath.Join(base, "RiparaMP3")
-	target := filepath.Join(dir, "RiparaMP3-Collega.exe")
-	if !samePath(exe, target) {
-		data, err := os.ReadFile(exe)
-		if err != nil {
-			return
+	exe = strings.TrimPrefix(exe, `\\?\`) // Windows lo aggiunge ai percorsi lunghi
+	if base := os.Getenv("LOCALAPPDATA"); base != "" {
+		old := filepath.Join(base, "RiparaMP3", "RiparaMP3-Collega.exe")
+		if exists(old) && !samePath(old, exe) {
+			os.Remove(old)
 		}
-		if old, err := os.ReadFile(target); err != nil || !bytes.Equal(old, data) {
-			if err := writeFileAtomic(target, data, 0o755); err != nil {
-				return
-			}
-		}
-		q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-		ps := "$d=[Environment]::GetFolderPath('Desktop');" +
-			"$s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Musica - collega al sito.lnk'));" +
-			"$s.TargetPath=" + q(target) + ";$s.WorkingDirectory=" + q(dir) + ";" +
-			"$s.Description='Collega questo PC al sito delle playlist';$s.Save()"
-		if exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps).Run() == nil {
-			fmt.Println("\nSul desktop c'è l'icona «Musica - collega al sito» per riaprire questa finestra.")
-		}
+	}
+	if desk, err := windows.KnownFolderPath(windows.FOLDERID_Desktop, 0); err == nil {
+		os.Remove(filepath.Join(desk, "Musica - collega al sito.lnk"))
 	}
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.QUERY_VALUE|registry.SET_VALUE)
 	if err != nil {
 		return
 	}
 	defer k.Close()
-	if _, _, err := k.GetStringValue(runValue); err == nil || a.cfg.AvvioChiesto {
+	if v, _, err := k.GetStringValue(runValue); err == nil && !samePath(strings.Trim(v, `"`), exe) {
+		k.DeleteValue(runValue)
+		a.cfg.AvvioChiesto = false
+	}
+	fmt.Printf("\nPer collegarti un'altra volta fai doppio clic su questo file:\n  %s\n", exe)
+	if a.cfg.AvvioChiesto {
 		return
 	}
 	u := &ui{r: bufio.NewReader(os.Stdin), yes: a.o.yes}
-	if u.yesNo("\nVuoi che il collegamento parta da solo quando accendi il PC?", true) {
-		k.SetStringValue(runValue, `"`+target+`"`)
+	if u.yesNo("\nVuoi che il collegamento parta da solo quando accendi il PC?", false) {
+		k.SetStringValue(runValue, `"`+exe+`"`)
 	}
 	a.cfg.AvvioChiesto = true
 	a.saveCfg()
