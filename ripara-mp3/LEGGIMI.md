@@ -49,7 +49,7 @@ Alcuni brani hanno tag del tutto sbagliati, per esempio titolo "Easy" e artista 
 
 Serve una **chiave gratuita**, da chiedere una sola volta:
 1. apri https://acoustid.org/new-application e accedi (va bene anche un account Google);
-2. compila il modulo (nome: `RiparaMP3`, versione: `1.3`, la tua email) e conferma;
+2. compila il modulo (nome: `RiparaMP3`, versione: `1.4`, la tua email) e conferma;
 3. copia la **API key** che compare;
 4. avvia RiparaMP3: alla domanda sulla chiave incollala nella finestra (tasto destro oppure Ctrl+V) e premi Invio.
 
@@ -100,16 +100,25 @@ Le prime due hanno le immagini pubblicate dalle case discografiche, pulite e in 
 
 Dalla versione 1.3 lo stesso programma può anche fare da **collegamento** con il sito delle playlist: dal sito (anche dal telefono) si decidono le playlist, e il programma sul PC legge la chiavetta, cerca i brani nei dischi e li copia.
 
-1. Apri il link che ti è stato mandato: scarica `RiparaMP3-Collega.exe`.
+1. Apri il link che ti è stato mandato: scarica `RiparaMP3-Collega-….exe` (il nome contiene il codice per collegarsi: non cambiarlo).
 2. Fai doppio clic (se Windows dice **"Windows ha protetto il PC"**: **Ulteriori informazioni** e poi **Esegui comunque**). Il programma si collega da solo al sito.
-3. Alla domanda **"Vuoi che parta da solo quando accendi il PC?"** rispondi come preferisci. Sul desktop compare l'icona **"Musica - collega al sito"** per riaprirlo.
+3. Alla domanda **"Vuoi che parta da solo quando accendi il PC?"** puoi rispondere di no (basta Invio). Per ricollegarti un'altra volta fai doppio clic sullo stesso file: il programma resta dove l'hai scaricato e non installa niente.
 4. **Lascia aperta la finestra** (puoi ridurla a icona) con la chiavetta attaccata. Il resto si fa dal sito.
 
-Cosa fa sulla chiavetta, quando dal sito si dà l'OK:
+Cosa fa sulla chiavetta, quando dal sito si dà l'OK. Per la **Tesla** (la scelta predefinita):
 
-- ogni playlist diventa una **cartella**; i brani si chiamano `Artista - Titolo - Anno.mp3`, con tag e copertina ufficiale;
+- tutto va nella cartella **`Music`**, con una cartella per ogni playlist (anche quelle proposte: la Tesla non legge le playlist .m3u);
+- i brani si chiamano `01 - Artista - Titolo - Anno.mp3`: il numero davanti tiene l'ordine della playlist, perché la Tesla mette i brani in ordine alfabetico;
+
+per un'**autoradio normale** (si sceglie dal sito):
+
+- ogni playlist diventa una **cartella**; i brani si chiamano `Artista - Titolo - Anno.mp3`;
 - le playlist "proposte" diventano file **.m3u**, che puntano ai brani già presenti senza copiarli due volte (i brani che stanno solo lì vanno nella cartella `Altri brani`);
-- i brani mancanti o rovinati vengono copiati dai dischi del PC;
+
+e in tutti e due i casi:
+
+- tag e copertina ufficiale in ogni brano;
+- i brani mancanti o rovinati vengono copiati dai dischi del PC, oppure da un'altra chiavetta attaccata (per passare a una chiavetta nuova);
 - i file che non stanno più in nessuna playlist **non vengono cancellati**: finiscono nella cartella `_Tolti`;
 - prima di riscrivere un brano ne fa una copia sul PC, in `Musica\RiparaMP3 backup <data>`.
 

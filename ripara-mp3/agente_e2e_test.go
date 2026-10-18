@@ -80,6 +80,10 @@ func TestPlaylistEndToEnd(t *testing.T) {
 
 	s, ts := newTestServer(t, options{mbURL: fake.URL, deezerURL: fake.URL, itunesURL: fake.URL + "/", caaURL: fake.URL, site: "http://musica.test"})
 	c := webReq{t, ts}
+	// qui si prova l'autoradio normale (cartelle e .m3u); la Tesla ha la sua prova
+	if code := c.do("PATCH", "/api/impostazioni", map[string]string{"formato": formatoClassico}, nil); code != 200 {
+		t.Fatalf("formato: %d", code)
+	}
 	s.mu.Lock()
 	token := s.newAgentLocked("PC-PROVA", version, "decordi")
 	s.mu.Unlock()
@@ -329,8 +333,133 @@ func TestCopyCancelled(t *testing.T) {
 			t.Errorf("file temporaneo rimasto: %s", f)
 		}
 	}
-	files, _ := filepath.Glob(filepath.Join(stick, "Lista", "*.mp3"))
-	if len(files) != 4 {
-		t.Errorf("dopo l'interruzione ci sono %d brani invece di 4", len(files))
+	n := 0
+	for _, f := range listTree(t, stick) {
+		if strings.HasSuffix(f, ".mp3") {
+			n++
+		}
+	}
+	if n != 4 {
+		t.Errorf("dopo l'interruzione ci sono %d brani invece di 4", n)
+	}
+}
+
+// Chiavetta per la Tesla, e passaggio a una chiavetta nuova: i brani che sui
+// dischi non ci sono vengono copiati da quella vecchia.
+func TestTeslaNewStick(t *testing.T) {
+	ffmpegAvailable(t)
+	mbMinInterval = 10 * time.Millisecond
+	deezerMinInterval, itunesMinInterval = 0, 0
+	tmp := t.TempDir()
+	e := &e2e{t: t, tmp: tmp, raw: filepath.Join(tmp, "raw")}
+	os.MkdirAll(e.raw, 0o755)
+	old := filepath.Join(tmp, "VECCHIA")
+	nuova := filepath.Join(tmp, "NUOVA")
+	hd := filepath.Join(tmp, "hd")
+	os.MkdirAll(nuova, 0o755)
+	fake, _ := fakeServer(t, fakeImages{deezer: coloredJPEG(t, 1000, 200, 30, 30), itunes: coloredJPEG(t, 1000, 30, 200, 30), caa: coloredJPEG(t, 1200, 30, 30, 200)})
+
+	bohemian := e.mp3(300, 20, "128k")
+	africa := e.mp3(850, 20, "128k")
+	albachiara := e.mp3(350, 21, "128k")
+	write(t, filepath.Join(old, "Viaggio/bohemian.mp3"), withTags(bohemian, &songTags{Artist: "Queen", Title: "Bohemian Rhapsody"}))
+	write(t, filepath.Join(old, "Viaggio/africa.mp3"), withTags(africa, &songTags{Artist: "Toto", Title: "Africa", Album: "Toto IV", Year: 1982}))
+	write(t, filepath.Join(hd, "Musica/Vasco Rossi - Albachiara.mp3"), withTags(albachiara, nil))
+	oldBefore := treeHashes(t, old)
+
+	drives := listDrivesFn
+	listDrivesFn = func() []driveInfo {
+		return []driveInfo{{root: old, label: "VECCHIA", removable: true, serial: "AAAA-0001", free: 1 << 30},
+			{root: nuova, label: "NUOVA", removable: true, serial: "BBBB-0002", free: 1 << 30}}
+	}
+	defer func() { listDrivesFn = drives }()
+
+	s, ts := newTestServer(t, options{mbURL: fake.URL, deezerURL: fake.URL, itunesURL: fake.URL + "/", caaURL: fake.URL})
+	c := webReq{t, ts}
+	s.mu.Lock()
+	token := s.newAgentLocked("PC", version, "decordi")
+	s.mu.Unlock()
+	a := newAgent(options{site: ts.URL, search: listFlag{hd}, cacheDir: filepath.Join(tmp, "agente"), noInstall: true, backupDir: filepath.Join(tmp, "copie")})
+	a.cfg = agentConfig{Sito: ts.URL, Token: token}
+
+	// la vecchia: lettura e importazione; poi l'HD
+	c.do("POST", "/api/lavori", map[string]string{"tipo": "scansiona", "volume": "AAAA-0001"}, nil)
+	stepAgent(t, a)
+	waitIdle(t, s)
+	c.do("POST", "/api/importa", map[string]any{"gruppi": []sceltaImport{{Chiave: "Viaggio", Nome: "Viaggio", Includi: true}}}, nil)
+	c.do("POST", "/api/lavori", map[string]string{"tipo": "indicizza"}, nil)
+	stepAgent(t, a)
+	waitIdle(t, s)
+	var lists []struct{ ID, Nome string }
+	c.do("GET", "/api/playlist", nil, &lists)
+	var res struct {
+		Dischi []voceDisco `json:"dischi"`
+	}
+	c.do("GET", "/api/cerca?deezer=0&q=albachiara", nil, &res)
+	c.do("POST", "/api/playlist/"+lists[0].ID+"/brani", map[string]any{"disco": map[string]string{"volume": res.Dischi[0].Volume, "p": res.Dischi[0].P}}, nil)
+	waitIdle(t, s)
+
+	// la nuova diventa quella delle playlist e viene letta (è vuota)
+	if code := c.do("POST", "/api/chiavetta/usa", map[string]string{"volume": "BBBB-0002"}, nil); code != 200 {
+		t.Fatalf("usa: %d", code)
+	}
+	c.do("POST", "/api/lavori", map[string]string{"tipo": "scansiona"}, nil)
+	stepAgent(t, a)
+	waitIdle(t, s)
+
+	var plan struct {
+		Piano piano `json:"piano"`
+	}
+	c.do("GET", "/api/piano", nil, &plan)
+	t.Logf("piano: %v %v %v", plan.Piano.Ops, plan.Piano.Conteggi, plan.Piano.Avvisi)
+	if plan.Piano.Ops[opCopia] != 3 || plan.Piano.Ops[opM3U] != 0 || plan.Piano.Volume != "BBBB-0002" {
+		t.Fatalf("piano inatteso")
+	}
+	c.do("POST", "/api/piano/"+plan.Piano.ID+"/conferma", map[string]bool{"backup": true}, nil)
+	stepAgent(t, a)
+	waitIdle(t, s)
+
+	// l'ordine è quello dei file sulla chiavetta vecchia (africa, bohemian),
+	// poi il brano aggiunto dal disco
+	want := []string{
+		"Music/Viaggio/01 - Toto - Africa - 1982.mp3",
+		"Music/Viaggio/02 - Queen - Bohemian Rhapsody - 1975.mp3",
+		"Music/Viaggio/03 - Vasco Rossi - Albachiara - 1979.mp3",
+		"RiparaMP3-playlist.json",
+		"RiparaMP3-registro.txt",
+	}
+	if got := listTree(t, nuova); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("chiavetta nuova:\n%s\nattesa:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for name, audio := range map[string][]byte{"02 - Queen - Bohemian Rhapsody - 1975.mp3": bohemian, "01 - Toto - Africa - 1982.mp3": africa,
+		"03 - Vasco Rossi - Albachiara - 1979.mp3": albachiara} {
+		_, in, b := readSongTags(t, filepath.Join(nuova, "Music", "Viaggio", name))
+		if !bytes.Equal(audioPayload(b, in), audio) {
+			t.Errorf("%s: audio diverso", name)
+		}
+	}
+	if fmt.Sprint(treeHashes(t, old)) != fmt.Sprint(oldBefore) {
+		t.Error("la chiavetta vecchia è stata modificata")
+	}
+	var again struct {
+		Piano piano `json:"piano"`
+	}
+	c.do("GET", "/api/piano", nil, &again)
+	if len(again.Piano.Ops) != 0 || again.Piano.Conteggi[stOk] != 3 {
+		t.Errorf("dopo la copia: %v %v", again.Piano.Ops, again.Piano.Conteggi)
+	}
+	// l'ordine della playlist è nei numeri: spostare un brano rinomina i file
+	var detail struct {
+		Brani []vistaBrano `json:"brani"`
+	}
+	c.do("GET", "/api/playlist/"+lists[0].ID, nil, &detail)
+	ids := []string{detail.Brani[2].ID, detail.Brani[0].ID, detail.Brani[1].ID}
+	c.do("POST", "/api/playlist/"+lists[0].ID+"/ordine", map[string]any{"brani": ids}, nil)
+	var moved struct {
+		Piano piano `json:"piano"`
+	}
+	c.do("GET", "/api/piano", nil, &moved)
+	if moved.Piano.Ops[opRinomina] != 3 || len(moved.Piano.Ops) != 1 {
+		t.Errorf("dopo il cambio d'ordine: %v", moved.Piano.Ops)
 	}
 }

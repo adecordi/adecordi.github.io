@@ -55,6 +55,7 @@ type server struct {
 	ac     *acoustidClient
 	art    *artFinder
 	ai     *aiClient
+	lrc    *lrcClient
 	elab   chan func()
 	busy   atomic.Int32 // lavori in sottofondo in coda o in corso
 	shazam shazamState
@@ -141,6 +142,11 @@ func newServer(o options) (*server, error) {
 	}
 	s.art = newArtFinder(o.deezerURL, o.itunesURL, o.caaURL, cache)
 	s.ai = newAIClient(readKey(keys, "gemini.key"), readKey(keys, "groq.key"))
+	lrcURL := o.lrclibURL
+	if lrcURL == "" {
+		lrcURL = "https://lrclib.net"
+	}
+	s.lrc = newLrcClient(lrcURL, cache)
 	s.load()
 	go s.worker()
 	go s.periodic()
@@ -191,6 +197,7 @@ func (s *server) periodic() {
 			s.ac.save()
 		}
 		s.art.infoCache().save()
+		s.lrc.save()
 		if n++; n%30 == 0 && s.busy.Load() == 0 {
 			s.mu.Lock()
 			pending := false

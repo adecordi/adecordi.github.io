@@ -419,6 +419,8 @@ func splitDash(s string) []string {
 	return []string{s}
 }
 
+var reYearOnly = regexp.MustCompile(`^(19|20)\d\d$`)
+
 // parseFileName ricava artista, titolo e numero di traccia dal nome del file.
 func parseFileName(path string) (artist, title string, track int) {
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
@@ -461,6 +463,10 @@ func parseFileName(path string) (artist, title string, track int) {
 		}
 	}
 	parts = clean
+	// "Artista - Titolo - Anno", il nome che dà il sito delle playlist
+	if len(parts) == 3 && reYearOnly.MatchString(parts[2]) {
+		parts = parts[:2]
+	}
 	switch {
 	case len(parts) == 0:
 		return "", "", track

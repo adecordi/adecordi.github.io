@@ -32,8 +32,13 @@ func songFromFile(f *fileChiavetta) *song {
 // stickRoot: per i tag ricavati dalle cartelle, la radice è la cartella
 // della playlist ("Anni 80" non deve diventare il nome di un artista).
 func stickRoot(p string) string {
-	if i := strings.IndexByte(p, '/'); i > 0 {
-		return "/k/" + p[:i]
+	parts := strings.Split(p, "/")
+	n := 1
+	if len(parts) > 2 && strings.EqualFold(parts[0], musicDir) {
+		n = 2 // Music\Playlist\brano.mp3
+	}
+	if len(parts) > n {
+		return "/k/" + strings.Join(parts[:n], "/")
 	}
 	return "/k"
 }
@@ -104,6 +109,10 @@ func (s *server) enrichSongs(songs []*song, fps map[*song]string, keys map[*song
 // processScan elabora una lettura completa della chiavetta.
 func (s *server) processScan(jobID string, acc *scanAcc) {
 	start := time.Now()
+	// l'agente legge quattro file alla volta e li manda come finiscono: si
+	// rimettono in ordine di nome, che è l'ordine in cui stanno sulla chiavetta
+	// (e quello con cui si importano nelle playlist)
+	sort.SliceStable(acc.files, func(i, j int) bool { return strings.ToLower(acc.files[i].P) < strings.ToLower(acc.files[j].P) })
 	var songs []*song
 	byFile := map[*song]*fileChiavetta{}
 	fps := map[*song]string{}
@@ -218,9 +227,15 @@ type anteprimaFile struct {
 	Rovinato  bool   `json:"rovinato,omitempty"`
 }
 
+// topFolder è la cartella della playlist di un file della chiavetta: la prima
+// cartella, oppure quella dentro Music nel formato per la Tesla.
 func topFolder(p string) string {
-	if i := strings.IndexByte(p, '/'); i > 0 {
-		return p[:i]
+	parts := strings.Split(p, "/")
+	if len(parts) > 2 && strings.EqualFold(parts[0], musicDir) {
+		return parts[1]
+	}
+	if len(parts) > 1 && !strings.EqualFold(parts[0], musicDir) {
+		return parts[0]
 	}
 	return ""
 }
@@ -254,7 +269,7 @@ func (s *server) importPreviewLocked() (*statoChiavetta, []gruppoImport) {
 			}
 			g = &gruppoImport{Chiave: top, Nome: name}
 			for _, p := range s.lib.Playlist {
-				if p.Tipo == tipoCartella && strings.EqualFold(safeFileName(p.Nome, 60), top) && top != "" {
+				if (p.Tipo == tipoCartella || s.lib.tesla()) && strings.EqualFold(safeFileName(p.Nome, 60), top) && top != "" {
 					g.Playlist = p.ID
 				}
 			}

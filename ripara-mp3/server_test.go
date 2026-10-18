@@ -211,6 +211,9 @@ func TestParseShazam(t *testing.T) {
 		r.Album != "Albachiara (Non siamo mica gli americani)" || r.ISRC != "ITB008470507" || r.coverURL == "" {
 		t.Errorf("%+v %v", r, err)
 	}
+	if r.Offset < 54 || r.Offset > 54.1 {
+		t.Errorf("posizione nella canzone: %v", r.Offset)
+	}
 	b, _ = os.ReadFile("testdata/shazam_nessuno.json")
 	if r, err := parseShazam(b); err != nil || r.Trovato {
 		t.Errorf("nessun brano: %+v %v", r, err)
@@ -456,11 +459,23 @@ func TestTicketDownload(t *testing.T) {
 	var body bytes.Buffer
 	body.ReadFrom(resp.Body)
 	resp.Body.Close()
-	p := filepath.Join(t.TempDir(), "scaricato.exe")
-	os.WriteFile(p, body.Bytes(), 0o755)
-	d, ok := readOverlay(p)
-	if !ok || d.Biglietto != ticket || d.Sito != "https://musica.example" {
-		t.Fatalf("programma scaricato senza biglietto: %+v", d)
+	// il programma è sempre lo stesso; il biglietto sta nel nome del file
+	orig, _ := os.ReadFile(exe)
+	if !bytes.Equal(body.Bytes(), orig) {
+		t.Error("il programma scaricato deve essere identico a quello sul server")
+	}
+	cd := resp.Header.Get("Content-Disposition")
+	if !strings.Contains(cd, `filename="RiparaMP3-Collega-`+ticket+`.exe"`) {
+		t.Fatalf("nome del file: %q", cd)
+	}
+	for _, name := range []string{"RiparaMP3-Collega-" + ticket + ".exe", "RiparaMP3-Collega-" + ticket + " (1).exe",
+		filepath.Join("C:", "Users", "x", "Downloads", "riparamp3-collega-"+ticket+".EXE")} {
+		if got := ticketFromName(name); got != ticket {
+			t.Errorf("%s: biglietto %q", name, got)
+		}
+	}
+	if ticketFromName("RiparaMP3-Collega.exe") != "" || ticketFromName("RiparaMP3.exe") != "" {
+		t.Error("biglietto trovato in un nome che non lo ha")
 	}
 	var e esitoAbbina
 	if code := c.do("POST", "/agente/biglietto", richiestaBiglietto{Biglietto: ticket, PC: "PC"}, &e); code != 200 || e.Token == "" {
@@ -543,6 +558,43 @@ func TestProposalsWithAI(t *testing.T) {
 	s.generaProposte()
 	if s.proposte.Errore == "" || len(s.proposte.Lista) == 0 {
 		t.Errorf("con l'AI giù restano i gruppi dai dati: %+v", s.proposte)
+	}
+}
+
+func TestParseLRC(t *testing.T) {
+	r := parseLRC("[ar:Vasco]\n[00:17.50] Respiri piano\r\n[00:05.00][01:02.25] Ritornello\n[00:20.63]\nsenza tempo")
+	if len(r) != 4 || r[0].T != 5 || r[0].Testo != "Ritornello" || r[1].T != 17.5 || r[2].Testo != "" || r[3].T != 62.25 {
+		t.Errorf("%+v", r)
+	}
+}
+
+func TestLyricsSearch(t *testing.T) {
+	lrclibMinInterval = 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		switch r.URL.Path {
+		case "/api/get":
+			if q.Get("duration") == "243" {
+				w.Write([]byte(`{"trackName":"Albachiara","artistName":"Vasco Rossi","duration":245,"syncedLyrics":"[00:17.50] Respiri piano","plainLyrics":"Respiri piano"}`))
+				return
+			}
+			http.NotFound(w, r)
+		case "/api/search":
+			w.Write([]byte(`[{"trackName":"Vita Spericolata","artistName":"Vasco Rossi","albumName":"Fronte del palco (Live)","duration":338,"syncedLyrics":"[00:01.00] dal vivo"},
+				{"trackName":"Vita spericolata","artistName":"Vasco Rossi","albumName":"Bollicine","duration":284,"syncedLyrics":"[00:10.00] Voglio una vita"},
+				{"trackName":"Vita spericolata","artistName":"Altro","duration":284,"syncedLyrics":"[00:01.00] no"}]`))
+		}
+	}))
+	defer srv.Close()
+	c := newLrcClient(srv.URL, t.TempDir())
+	if r, err := c.lyrics("Vasco Rossi", "Albachiara", "", 243); err != nil || !r.Sincronizzato || r.Righe[0].Testo != "Respiri piano" {
+		t.Errorf("get: %+v %v", r, err)
+	}
+	if r, err := c.lyrics("Vasco Rossi", "Vita spericolata", "", 283); err != nil || !r.Trovato || r.Righe[0].Testo != "Voglio una vita" {
+		t.Errorf("search: %+v %v", r, err)
+	}
+	if r, err := c.lyrics("Nessuno", "Niente", "", 0); err != nil || r.Trovato {
+		t.Errorf("non trovato: %+v %v", r, err)
 	}
 }
 

@@ -183,11 +183,11 @@ func (s *server) agScarica(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "programma non disponibile", http.StatusServiceUnavailable)
 		return
 	}
-	out := withOverlay(exe, overlayData{Sito: s.sito, Biglietto: ticket})
+	// il programma è identico per tutti; il biglietto sta nel nome del file
 	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-	w.Header().Set("Content-Disposition", `attachment; filename="RiparaMP3-Collega.exe"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="RiparaMP3-Collega-`+ticket+`.exe"`)
 	w.Header().Set("Cache-Control", "no-store")
-	w.Write(out)
+	w.Write(exe)
 }
 
 // --- Lavori -------------------------------------------------------------------------------

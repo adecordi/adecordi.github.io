@@ -682,10 +682,15 @@ func (a *agent) copyPlan(jr *jobRun, raw json.RawMessage) error {
 				}
 				src = abs(rel)
 			case "disco":
+				// un disco del PC oppure un'altra chiavetta (la vecchia, quando si
+				// passa a una nuova); mai la chiavetta su cui si sta scrivendo
 				for _, du := range units {
-					if du.Volume == f.Volume && !du.Rimovibile {
+					if du.Volume == f.Volume && !samePath(du.Lettera, root) {
 						src, _ = safeJoin(du.Lettera, f.P)
 						from = "disco «" + du.nome() + "» " + f.P
+						if du.Rimovibile {
+							from = "chiavetta «" + du.nome() + "» " + f.P
+						}
 					}
 				}
 				if src == "" {

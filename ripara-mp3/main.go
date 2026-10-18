@@ -22,7 +22,7 @@ import (
 )
 
 // version si può impostare alla compilazione con -ldflags "-X main.version=...".
-var version = "1.3"
+var version = "1.4"
 
 type listFlag []string
 
@@ -61,6 +61,7 @@ type options struct {
 	songrec   string
 	noInstall bool
 	libCopy   string
+	lrclibURL string
 }
 
 func parseFlags() options {
@@ -94,6 +95,7 @@ func parseFlags() options {
 	flag.StringVar(&o.songrec, "songrec", "songrec", "programma songrec per riconoscere i brani dal microfono")
 	flag.BoolVar(&o.noInstall, "non-installare", false, "non copia il programma e non crea collegamenti")
 	flag.StringVar(&o.libCopy, "copia-libreria", "", "cartella in cui tenere una copia della libreria (per il backup)")
+	flag.StringVar(&o.lrclibURL, "lrclib-url", "https://lrclib.net", "indirizzo del servizio dei testi (LRCLIB)")
 	flag.Parse()
 	return o
 }

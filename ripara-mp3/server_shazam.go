@@ -41,12 +41,16 @@ type risultatoShazam struct {
 	Dischi     []voceDisco   `json:"dischi,omitempty"`
 	InLibreria []voceLibrary `json:"in_libreria,omitempty"`
 	Messaggio  string        `json:"messaggio,omitempty"`
+	Offset     float64       `json:"offset,omitempty"` // dove era la canzone (secondi) nel pezzo ascoltato
 	coverURL   string
 }
 
 // parseShazam legge il JSON di songrec (la risposta di Shazam).
 func parseShazam(out []byte) (*risultatoShazam, error) {
 	var d struct {
+		Matches []struct {
+			Offset float64 `json:"offset"`
+		} `json:"matches"`
 		Track *struct {
 			Key      string `json:"key"`
 			Title    string `json:"title"`
@@ -77,6 +81,9 @@ func parseShazam(out []byte) (*risultatoShazam, error) {
 		return r, nil
 	}
 	r.Trovato = true
+	if len(d.Matches) > 0 {
+		r.Offset = d.Matches[0].Offset
+	}
 	r.Artista, r.Titolo, r.Chiave, r.ISRC, r.Genere = t.Subtitle, t.Title, t.Key, t.ISRC, t.Genres.Primary
 	r.coverURL = t.Images.Coverarthq
 	if r.coverURL == "" {
