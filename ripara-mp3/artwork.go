@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,9 @@ type artFinder struct {
 	deezerURL, itunesURL, caaURL string
 	deezer, itunes, caa, img     *webClient
 	dir                          string
+
+	infoOnce sync.Once
+	info     *dzInfoCache
 }
 
 func newArtFinder(deezerURL, itunesURL, caaURL, cacheDir string) *artFinder {
@@ -45,11 +49,11 @@ func newArtFinder(deezerURL, itunesURL, caaURL, cacheDir string) *artFinder {
 }
 
 func (a *artFinder) errors() int {
-	return a.deezer.errors + a.itunes.errors + a.caa.errors + a.img.errors
+	return a.deezer.errorCount() + a.itunes.errorCount() + a.caa.errorCount() + a.img.errorCount()
 }
 
 func (a *artFinder) offline() bool {
-	return a.deezer.offline && a.itunes.offline
+	return a.deezer.isOffline() && a.itunes.isOffline()
 }
 
 // --- Cache su disco --------------------------------------------------------------
@@ -230,47 +234,57 @@ func (a *artFinder) deezerAlbum(artist, album string) (string, error) {
 }
 
 // deezerTrack cerca il brano e restituisce il primo album originale (non
-// raccolta) che lo contiene.
+// raccolta) che lo contiene. La ricerca avanzata ("track:") di Deezer da
+// ottobre 2026 non trova più nulla: in quel caso si ripete con una ricerca
+// semplice, filtrando poi artista, titolo e durata.
 func (a *artFinder) deezerTrack(artist, title string, duration float64) (*dzAlbum, error) {
-	var res struct {
-		Data []struct {
-			Title    string   `json:"title"`
-			Duration int      `json:"duration"`
-			Artist   dzArtist `json:"artist"`
-			Album    dzAlbum  `json:"album"`
-		} `json:"data"`
-	}
-	q := "artist:" + dzQuote(artist) + " track:" + dzQuote(stripParens(title))
-	if err := a.deezerGet("/search/track?limit=25&q="+url.QueryEscape(q), &res); err != nil {
-		return nil, err
+	queries := []string{
+		"artist:" + dzQuote(artist) + " track:" + dzQuote(stripParens(title)),
+		artist + " " + stripParens(title),
 	}
 	want := normKey(stripParens(title))
 	seen := map[int64]bool{}
 	checked := 0
-	for _, d := range res.Data {
-		if !artistMatch(d.Artist.Name, artist) || normKey(stripParens(d.Title)) != want {
+	var lastErr error
+	for _, q := range queries {
+		var res struct {
+			Data []struct {
+				Title    string   `json:"title"`
+				Duration int      `json:"duration"`
+				Artist   dzArtist `json:"artist"`
+				Album    dzAlbum  `json:"album"`
+			} `json:"data"`
+		}
+		if err := a.deezerGet("/search/track?limit=25&q="+url.QueryEscape(q), &res); err != nil {
+			lastErr = err
 			continue
 		}
-		if duration > 0 && d.Duration > 0 && math.Abs(float64(d.Duration)-duration) > 15 {
-			continue
+		lastErr = nil
+		for _, d := range res.Data {
+			if !artistMatch(d.Artist.Name, artist) || normKey(stripParens(d.Title)) != want {
+				continue
+			}
+			if duration > 0 && d.Duration > 0 && math.Abs(float64(d.Duration)-duration) > 15 {
+				continue
+			}
+			if seen[d.Album.ID] || looksLikeCompilationTitle(d.Album.Title) {
+				continue
+			}
+			seen[d.Album.ID] = true
+			if checked++; checked > 6 {
+				return nil, nil
+			}
+			var al dzAlbum
+			if err := a.deezerGet("/album/"+strconv.FormatInt(d.Album.ID, 10), &al); err != nil {
+				continue
+			}
+			if al.RecordType == "compile" || isVariousArtists(al.Artist.Name) || al.cover() == "" {
+				continue
+			}
+			return &al, nil
 		}
-		if seen[d.Album.ID] || looksLikeCompilationTitle(d.Album.Title) {
-			continue
-		}
-		seen[d.Album.ID] = true
-		if checked++; checked > 6 {
-			break
-		}
-		var al dzAlbum
-		if err := a.deezerGet("/album/"+strconv.FormatInt(d.Album.ID, 10), &al); err != nil {
-			continue
-		}
-		if al.RecordType == "compile" || isVariousArtists(al.Artist.Name) || al.cover() == "" {
-			continue
-		}
-		return &al, nil
 	}
-	return nil, nil
+	return nil, lastErr
 }
 
 // --- Apple (iTunes Search) --------------------------------------------------------

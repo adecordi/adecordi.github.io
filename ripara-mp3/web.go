@@ -7,28 +7,56 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const userAgent = "RiparaMP3/1.1 ( https://github.com/adecordi/adecordi.github.io )"
+var userAgent = "RiparaMP3/" + version + " ( https://github.com/adecordi/adecordi.github.io )"
 
 var errNotFound = errors.New("non trovato")
 
+// offlineRetry: dopo quanto tempo un servizio considerato irraggiungibile
+// viene riprovato. Zero vuol dire mai (il programma da console fa un solo
+// giro); il server, che resta acceso per giorni, riprova dopo qualche minuto.
+var offlineRetry time.Duration
+
 // webClient fa richieste a un servizio online rispettando una pausa minima
 // fra una richiesta e l'altra; dopo tre errori di rete di fila considera
-// Internet non raggiungibile.
+// Internet non raggiungibile. Si può usare da più goroutine insieme: la pausa
+// vale per tutte, come chiedono i servizi (MusicBrainz conta le richieste
+// per indirizzo).
 type webClient struct {
 	http        *http.Client
 	minInterval time.Duration
-	last        time.Time
-	failures    int
-	errors      int // errori in totale (rete o servizio), per avvisare l'utente
-	offline     bool
+
+	mu           sync.Mutex
+	last         time.Time // momento riservato all'ultima richiesta
+	failures     int
+	offlineSince time.Time // zero se il servizio è raggiungibile
+
+	errs atomic.Int64 // errori in totale (rete o servizio), per avvisare l'utente
 }
 
 func newWebClient(minInterval time.Duration) *webClient {
 	return &webClient{http: &http.Client{Timeout: 25 * time.Second}, minInterval: minInterval}
 }
+
+// isOffline dice se il servizio è considerato irraggiungibile.
+func (c *webClient) isOffline() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.offlineSince.IsZero() {
+		return false
+	}
+	if offlineRetry > 0 && time.Since(c.offlineSince) > offlineRetry {
+		c.offlineSince, c.failures = time.Time{}, 0
+		return false
+	}
+	return true
+}
+
+func (c *webClient) errorCount() int { return int(c.errs.Load()) }
 
 func (c *webClient) get(u string) ([]byte, error) {
 	return c.do("GET", u, nil)
@@ -48,15 +76,43 @@ type httpError struct {
 
 func (e *httpError) Error() string { return fmt.Sprintf("risposta %d", e.status) }
 
+// wait riserva il prossimo turno libero e aspetta che arrivi. Il turno si
+// prenota sotto il lucchetto, ma l'attesa e la richiesta avvengono fuori.
+func (c *webClient) wait() {
+	c.mu.Lock()
+	slot := time.Now()
+	if next := c.last.Add(c.minInterval); next.After(slot) {
+		slot = next
+	}
+	c.last = slot
+	c.mu.Unlock()
+	if d := time.Until(slot); d > 0 {
+		time.Sleep(d)
+	}
+}
+
+func (c *webClient) netFailure() {
+	c.errs.Add(1)
+	c.mu.Lock()
+	c.failures++
+	if c.failures >= 3 && c.offlineSince.IsZero() {
+		c.offlineSince = time.Now()
+	}
+	c.mu.Unlock()
+}
+
+func (c *webClient) netOK() {
+	c.mu.Lock()
+	c.failures = 0
+	c.mu.Unlock()
+}
+
 func (c *webClient) do(method, u string, form url.Values) ([]byte, error) {
-	if c.offline {
+	if c.isOffline() {
 		return nil, errors.New("internet non disponibile")
 	}
 	for attempt := 0; attempt < 4; attempt++ {
-		if d := time.Until(c.last.Add(c.minInterval)); d > 0 {
-			time.Sleep(d)
-		}
-		c.last = time.Now()
+		c.wait()
 		var req *http.Request
 		if form != nil {
 			req, _ = http.NewRequest(method, u, strings.NewReader(form.Encode()))
@@ -67,30 +123,26 @@ func (c *webClient) do(method, u string, form url.Values) ([]byte, error) {
 		req.Header.Set("User-Agent", userAgent)
 		resp, err := c.http.Do(req)
 		if err != nil {
-			c.errors++
-			c.failures++
-			if c.failures >= 3 {
-				c.offline = true
-			}
+			c.netFailure()
 			return nil, err
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 		resp.Body.Close()
 		switch {
 		case resp.StatusCode == http.StatusOK && err == nil:
-			c.failures = 0
+			c.netOK()
 			return body, nil
 		case resp.StatusCode == http.StatusNotFound:
-			c.failures = 0
+			c.netOK()
 			return nil, errNotFound
 		case resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 			time.Sleep(time.Duration(2+2*attempt) * time.Second)
 			continue
 		default:
-			c.errors++
+			c.errs.Add(1)
 			return nil, &httpError{resp.StatusCode, body}
 		}
 	}
-	c.errors++
+	c.errs.Add(1)
 	return nil, errors.New("servizio non disponibile")
 }

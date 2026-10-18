@@ -21,7 +21,8 @@ import (
 	"unicode/utf8"
 )
 
-const version = "1.2"
+// version si può impostare alla compilazione con -ldflags "-X main.version=...".
+var version = "1.3"
 
 type listFlag []string
 
@@ -47,6 +48,19 @@ type options struct {
 	fpcalc      string
 	noIdentify  bool
 	cacheDir    string
+
+	// sito e agente
+	server    bool
+	agent     bool
+	site      string
+	listen    string
+	dataDir   string
+	users     string
+	keysDir   string
+	exePath   string
+	songrec   string
+	noInstall bool
+	libCopy   string
 }
 
 func parseFlags() options {
@@ -69,8 +83,33 @@ func parseFlags() options {
 	flag.StringVar(&o.fpcalc, "fpcalc", "", "percorso di fpcalc (Chromaprint)")
 	flag.BoolVar(&o.noIdentify, "non-riconoscere", false, "non riconosce i brani dall'audio")
 	flag.StringVar(&o.cacheDir, "cache-dir", "", "cartella per la cache delle ricerche online")
+	flag.BoolVar(&o.server, "server", false, "avvia il sito delle playlist (sulla VPS)")
+	flag.BoolVar(&o.agent, "collega", false, "collega questo PC al sito delle playlist")
+	flag.StringVar(&o.site, "sito", "", "indirizzo del sito delle playlist")
+	flag.StringVar(&o.listen, "indirizzo", "127.0.0.1:8036", "indirizzo su cui il sito resta in ascolto")
+	flag.StringVar(&o.dataDir, "dati", "", "cartella dei dati del sito")
+	flag.StringVar(&o.users, "utenti", "", "utenti della portineria ammessi al sito, separati da virgole")
+	flag.StringVar(&o.keysDir, "chiavi", "", "cartella con le chiavi dei servizi (acoustid.key, gemini.key, groq.key)")
+	flag.StringVar(&o.exePath, "exe", "", "programma per Windows da scaricare dal sito")
+	flag.StringVar(&o.songrec, "songrec", "songrec", "programma songrec per riconoscere i brani dal microfono")
+	flag.BoolVar(&o.noInstall, "non-installare", false, "non copia il programma e non crea collegamenti")
+	flag.StringVar(&o.libCopy, "copia-libreria", "", "cartella in cui tenere una copia della libreria (per il backup)")
 	flag.Parse()
 	return o
+}
+
+// agentMode dice se il programma deve fare da agente: lo chiede l'opzione,
+// il nome del file (RiparaMP3-Collega.exe) o il biglietto scaricato dal sito.
+func agentMode(o options) bool {
+	if o.agent {
+		return true
+	}
+	exe, _ := os.Executable()
+	if strings.Contains(strings.ToLower(filepath.Base(exe)), "collega") {
+		return true
+	}
+	_, ok := readOverlay(exe)
+	return ok
 }
 
 var (
@@ -98,6 +137,16 @@ func handleInterrupt() {
 
 func main() {
 	opts := parseFlags()
+	if opts.server {
+		if err := runServer(opts); err != nil {
+			fmt.Fprintln(os.Stderr, "ERRORE:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if agentMode(opts) {
+		os.Exit(runAgentMain(opts))
+	}
 	handleInterrupt()
 	u := &ui{r: bufio.NewReader(os.Stdin), yes: opts.yes}
 	code := 0
@@ -291,6 +340,12 @@ func run(o options, u *ui) error {
 	root, _ = filepath.Abs(root)
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
 		return fmt.Errorf("la cartella %s non esiste", root)
+	}
+	if exists(filepath.Join(root, markerFile)) {
+		fmt.Printf("\nLa chiavetta %s è organizzata a playlist dal sito: questo programma metterebbe tutti\n", root)
+		fmt.Println("i brani nella cartella principale e le playlist andrebbero perse. Per sistemarla usa il")
+		fmt.Println("sito delle playlist (pulsante «Leggi la chiavetta» e poi «Prepara la copia»).")
+		return nil
 	}
 	if !isRemovable && o.stick == "" {
 		fmt.Printf("\nAttenzione: %s non risulta una chiavetta. Tutti gli mp3 che contiene, anche nelle\nsottocartelle, verranno rinominati e spostati direttamente in %s.\n", root, root)
@@ -533,7 +588,7 @@ func run(o options, u *ui) error {
 			progress("Cerco", i+1, len(keys), s.displayName())
 			r, err := mb.lookup(s.final.Artist, s.final.Title, s.info.Duration)
 			if err != nil {
-				if mb.web.offline {
+				if mb.web.isOffline() {
 					break
 				}
 				continue
@@ -551,7 +606,7 @@ func run(o options, u *ui) error {
 		}
 		mb.save()
 		endProgress()
-		if mb.web.offline {
+		if mb.web.isOffline() {
 			fmt.Println("  Internet non raggiungibile: continuo senza le informazioni online.")
 		} else {
 			if len(keys) > 0 {
@@ -560,7 +615,7 @@ func run(o options, u *ui) error {
 			art := newArtFinder(o.deezerURL, o.itunesURL, o.caaURL, cache)
 			assignCovers(songs, art, covers, replaceCovers, func(i, n int, name string) { progress("Copertine", i, n, name) })
 			endProgress()
-			if mb.web.errors+art.errors() > 0 {
+			if mb.web.errorCount()+art.errors() > 0 {
 				fmt.Println("  Attenzione: alcuni servizi online non hanno risposto. Rilancia il programma più tardi")
 				fmt.Println("  per completare album e copertine (quello che è già stato trovato resta in memoria).")
 			}
@@ -765,7 +820,7 @@ func acoustidKey(o options, u *ui, cache string) string {
 	fmt.Println("Per riconoscere i brani dall'audio (anche quelli con i tag sbagliati) serve una")
 	fmt.Println("chiave gratuita di AcoustID. Si ottiene così:")
 	fmt.Println("  1. apri https://acoustid.org/new-application e accedi (va bene anche un account Google);")
-	fmt.Println("  2. compila il modulo (nome: RiparaMP3, versione: 1.2, la tua email) e conferma;")
+	fmt.Println("  2. compila il modulo (nome: RiparaMP3, versione: " + version + ", la tua email) e conferma;")
 	fmt.Println("  3. copia la \"API key\" che compare.")
 	fmt.Println("La chiave viene ricordata: la chiederò solo questa volta.")
 	k := cleanPath(u.line("Incolla qui la chiave (tasto destro o Ctrl+V) e premi Invio, oppure solo Invio per saltare: "))
@@ -791,7 +846,7 @@ func identifyStep(o options, cache, key string, songs []*song, mb *mbClient, lg 
 		fmt.Println("  Alla prossima esecuzione te la chiederò di nuovo.")
 		return
 	}
-	if ac.web.offline {
+	if ac.web.isOffline() {
 		fmt.Println("  AcoustID non raggiungibile: continuo senza il riconoscimento dall'audio.")
 	}
 	fmt.Printf("  Brani riconosciuti dall'audio: %d su %d\n", found, total)

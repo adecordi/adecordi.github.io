@@ -17,7 +17,12 @@ type driveInfo struct {
 	removable bool
 	size      uint64
 	free      uint64
+	serial    string // qui ricavato dal percorso: stabile finché il disco è montato lì
+	fs        string
 }
+
+// listDrivesFn è listDrives; le prove la sostituiscono con dischi finti.
+var listDrivesFn = listDrives
 
 func listDrives() []driveInfo {
 	var out []driveInfo
@@ -30,12 +35,12 @@ func listDrives() []driveInfo {
 		for _, e := range entries {
 			if e.IsDir() && e.Name() != "Macintosh HD" {
 				p := filepath.Join(base, e.Name())
-				out = append(out, driveInfo{root: p, label: e.Name(), removable: true, free: freeSpace(p)})
+				out = append(out, driveInfo{root: p, label: e.Name(), removable: true, free: freeSpace(p), serial: pathSerial(p)})
 			}
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		out = append(out, driveInfo{root: home, label: "home", free: freeSpace(home)})
+		out = append(out, driveInfo{root: home, label: "home", free: freeSpace(home), serial: pathSerial(home)})
 	}
 	return out
 }

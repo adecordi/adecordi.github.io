@@ -11,6 +11,7 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -31,11 +32,21 @@ type coverStore struct {
 	mu     sync.Mutex
 	byID   map[string][]byte
 	thumbs map[string]string
+	dir    string // se non è vuota le copertine stanno su disco (server)
 }
 
 func newCoverStore() *coverStore {
 	return &coverStore{byID: map[string][]byte{}, thumbs: map[string]string{}}
 }
+
+// newDiskCoverStore tiene le copertine in una cartella invece che in
+// memoria: il server ne accumula migliaia.
+func newDiskCoverStore(dir string) *coverStore {
+	os.MkdirAll(dir, 0o755)
+	return &coverStore{byID: map[string][]byte{}, thumbs: map[string]string{}, dir: dir}
+}
+
+var reCoverID = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // add normalizza un'immagine e restituisce il suo identificativo ("" se non
 // è un'immagine valida).
@@ -47,12 +58,62 @@ func (c *coverStore) add(raw []byte) string {
 	if err != nil {
 		return ""
 	}
-	sum := sha1.Sum(img)
-	id := hex.EncodeToString(sum[:8])
+	id := coverID(img)
+	if c.dir != "" {
+		p := filepath.Join(c.dir, id+".jpg")
+		if !exists(p) {
+			writeFileAtomic(p, img, 0o644)
+		}
+		return id
+	}
 	c.mu.Lock()
 	c.byID[id] = img
 	c.mu.Unlock()
 	return id
+}
+
+// putNormalized salva una copertina già normalizzata con il suo
+// identificativo (quelle mandate dall'agente).
+func (c *coverStore) putNormalized(id string, img []byte) bool {
+	if c.dir == "" || !reCoverID.MatchString(id) || coverID(img) != id {
+		return false
+	}
+	if n, err := normalizeCover(img); err != nil || !bytes.Equal(n, img) {
+		return false
+	}
+	p := filepath.Join(c.dir, id+".jpg")
+	if !exists(p) {
+		writeFileAtomic(p, img, 0o644)
+	}
+	return true
+}
+
+func (c *coverStore) has(id string) bool {
+	if c.dir == "" {
+		return c.get(id) != nil
+	}
+	return reCoverID.MatchString(id) && exists(filepath.Join(c.dir, id+".jpg"))
+}
+
+// thumbFile restituisce la miniatura JPEG da 160 pixel per il sito.
+func (c *coverStore) thumbFile(id string) []byte {
+	if c.dir == "" || !reCoverID.MatchString(id) {
+		return nil
+	}
+	p := filepath.Join(c.dir, id+"_160.jpg")
+	if b, err := os.ReadFile(p); err == nil {
+		return b
+	}
+	img, _, err := image.Decode(bytes.NewReader(c.get(id)))
+	if err != nil {
+		return nil
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, resize(img, 160), &jpeg.Options{Quality: 80}); err != nil {
+		return nil
+	}
+	writeFileAtomic(p, buf.Bytes(), 0o644)
+	return buf.Bytes()
 }
 
 // minSide restituisce il lato più corto della copertina (0 se non c'è).
@@ -69,6 +130,13 @@ func (c *coverStore) minSide(id string) int {
 }
 
 func (c *coverStore) get(id string) []byte {
+	if c.dir != "" {
+		if !reCoverID.MatchString(id) {
+			return nil
+		}
+		b, _ := os.ReadFile(filepath.Join(c.dir, id+".jpg"))
+		return b
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.byID[id]
@@ -80,8 +148,8 @@ func (c *coverStore) thumb(id string) string {
 		c.mu.Unlock()
 		return t
 	}
-	raw := c.byID[id]
 	c.mu.Unlock()
+	raw := c.get(id)
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return ""
@@ -112,11 +180,27 @@ func normalizeCover(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// la qualità scende finché il file sta nei 200 KB: così il risultato,
+	// normalizzato di nuovo, resta identico e la copertina ha sempre lo
+	// stesso identificativo (sul PC, sul sito e dopo essere stata scritta)
+	small := resize(img, coverMax)
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, resize(img, coverMax), &jpeg.Options{Quality: 90}); err != nil {
-		return nil, err
+	for _, q := range []int{90, 80, 70, 60, 50} {
+		buf.Reset()
+		if err := jpeg.Encode(&buf, small, &jpeg.Options{Quality: q}); err != nil {
+			return nil, err
+		}
+		if buf.Len() <= 200<<10 {
+			break
+		}
 	}
 	return buf.Bytes(), nil
+}
+
+// coverID è l'identificativo di una copertina già normalizzata.
+func coverID(img []byte) string {
+	sum := sha1.Sum(img)
+	return hex.EncodeToString(sum[:8])
 }
 
 func resize(img image.Image, max int) image.Image {

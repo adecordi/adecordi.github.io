@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,12 @@ type driveInfo struct {
 	removable bool
 	size      uint64
 	free      uint64
+	serial    string // numero di serie del volume, "XXXX-XXXX"
+	fs        string // file system (FAT32, NTFS...)
 }
+
+// listDrivesFn è listDrives; le prove la sostituiscono con dischi finti.
+var listDrivesFn = listDrives
 
 // listDrives elenca le unità rimovibili e i dischi interni con un volume
 // leggibile (i lettori di schede vuoti vengono saltati).
@@ -36,13 +42,15 @@ func listDrives() []driveInfo {
 		if t != windows.DRIVE_REMOVABLE && t != windows.DRIVE_FIXED {
 			continue
 		}
-		var label [261]uint16
-		if err := windows.GetVolumeInformation(p, &label[0], uint32(len(label)), nil, nil, nil, nil, 0); err != nil {
+		var label, fsName [261]uint16
+		var serial uint32
+		if err := windows.GetVolumeInformation(p, &label[0], uint32(len(label)), &serial, nil, nil, &fsName[0], uint32(len(fsName))); err != nil {
 			continue
 		}
 		var free, total, totalFree uint64
 		windows.GetDiskFreeSpaceEx(p, &free, &total, &totalFree)
-		out = append(out, driveInfo{root, windows.UTF16ToString(label[:]), t == windows.DRIVE_REMOVABLE, total, free})
+		out = append(out, driveInfo{root: root, label: windows.UTF16ToString(label[:]), removable: t == windows.DRIVE_REMOVABLE,
+			size: total, free: free, serial: fmt.Sprintf("%04X-%04X", serial>>16, serial&0xFFFF), fs: windows.UTF16ToString(fsName[:])})
 	}
 	return out
 }

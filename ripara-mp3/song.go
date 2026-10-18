@@ -94,7 +94,8 @@ func listStick(root string) ([]*song, error) {
 		lower := strings.ToLower(name)
 		if d.IsDir() {
 			if p != root && (strings.HasPrefix(name, ".") || strings.HasPrefix(name, "$") ||
-				lower == "system volume information" || lower == "_doppioni" || lower == "_rovinati" || strings.HasPrefix(lower, "riparamp3 backup")) {
+				lower == "system volume information" || lower == "_doppioni" || lower == "_rovinati" || lower == "_tolti" ||
+				strings.HasPrefix(lower, "riparamp3 backup")) {
 				return fs.SkipDir
 			}
 			return nil
