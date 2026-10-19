@@ -561,6 +561,39 @@ func TestProposalsWithAI(t *testing.T) {
 	}
 }
 
+func TestDamagedSeverityAndSearch(t *testing.T) {
+	for _, c := range []struct {
+		p    []string
+		want int
+	}{
+		{[]string{"dati audio alterati (il controllo CRC non corrisponde)"}, 0},
+		{[]string{"1 punto rovinato (12 KB di dati non validi)", "dati audio alterati (il controllo CRC non corrisponde)"}, 0},
+		{[]string{"5 punti rovinati (49 KB di dati non validi)", "parte finale rovinata (10 KB)"}, 1},
+		{[]string{"30 punti rovinati (382 KB di dati non validi)"}, 2},
+		{[]string{"2 punti rovinati (1,2 MB di dati non validi)"}, 2},
+		{[]string{"inizio del file rovinato (8 KB)"}, 1},
+		{[]string{"file troncato: mancano circa 1 min 05 s alla fine"}, 2},
+		{[]string{"file troncato: mancano circa 0 s alla fine"}, 0},
+	} {
+		if g := gravitaDanno(c.p); g != c.want {
+			t.Errorf("%v: gravità %d invece di %d", c.p, g, c.want)
+		}
+	}
+	for _, c := range []struct {
+		b          brano
+		file, want string
+	}{
+		{brano{Artista: "Annalisa", Titolo: "Ragazza sola"}, "x.mp3", "Annalisa+Ragazza+sola"},
+		{brano{Titolo: "09 Traccia 9"}, "LIFE IS ROLLERCOAST.mp3", "LIFE+IS+ROLLERCOAST"},
+		{brano{Titolo: "x"}, "Music/A/Bottiglie Vuote (Official Video).mp3", "Bottiglie+Vuote"},
+		{brano{Titolo: "x"}, "i'm_gonna_be_(500_miles).mp3", "i%27m+gonna+be+%28500+miles%29"},
+	} {
+		if got := ricercaYouTube(&c.b, c.file); got != "https://www.youtube.com/results?search_query="+c.want {
+			t.Errorf("%+v %q: %s", c.b, c.file, got)
+		}
+	}
+}
+
 // Un file senza artista non si collega per nome (la chiave sarebbe vuota per
 // tutti) ma tiene il legame avuto all'importazione; il brano non prende
 // l'audio di un file che non è il suo.

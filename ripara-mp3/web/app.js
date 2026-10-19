@@ -201,7 +201,7 @@
 
   function segnaScheda() {
     var mappa = { playlist: 'playlist', una: 'playlist', brano: 'playlist', cerca: 'cerca', ascolta: 'ascolta', proposte: 'proposte',
-      chiavetta: 'chiavetta', copia: 'chiavetta', importa: 'chiavetta', pc: 'pc', karaoke: 'ascolta' };
+      chiavetta: 'chiavetta', copia: 'chiavetta', importa: 'chiavetta', rovinati: 'chiavetta', pc: 'pc', karaoke: 'ascolta' };
     var s = mappa[rotta.nome] || '';
     var link = document.getElementById('schede').getElementsByTagName('a');
     for (var i = 0; i < link.length; i++) {
@@ -215,7 +215,7 @@
     if (rotta.nome !== 'una') { selezione = null; }
     var v = {
       playlist: vistaPlaylist, una: vistaUna, brano: vistaBrano, cerca: vistaCerca, ascolta: vistaAscolta,
-      proposte: vistaProposte, chiavetta: vistaChiavetta, copia: vistaCopia, importa: vistaImporta, pc: vistaPC,
+      proposte: vistaProposte, chiavetta: vistaChiavetta, copia: vistaCopia, importa: vistaImporta, rovinati: vistaRovinati, pc: vistaPC,
       karaoke: vistaKaraoke
     }[rotta.nome] || vistaPlaylist;
     v();
@@ -473,6 +473,9 @@
         (b.anno ? ' · ' + b.anno : '') + '</p>' + chip(r.vista.stato, r.vista.disco) +
         (r.vista.file ? '<p><small>Sulla chiavetta: ' + esc(r.vista.file) + '</small></p>' : '') + '</div></div>';
       h += '<button class="primario" data-azione="karaoke-brano">Testo e karaoke</button>';
+      if ((r.vista.stato === 'rovinato' || r.vista.stato === 'manca') && r.youtube) {
+        h += '<a class="bottone" href="' + esc(r.youtube) + '" target="_blank" rel="noopener">Cerca su YouTube</a>';
+      }
       h += '<div class="riquadro"><h2>Informazioni</h2>' +
         '<label class="campo"><span>Artista</span><input type="text" id="f-artista" value="' + esc(b.artista) + '"></label>' +
         '<label class="campo"><span>Titolo</span><input type="text" id="f-titolo" value="' + esc(b.titolo) + '"></label>' +
@@ -1065,7 +1068,8 @@
         h += '<p class="tenue">Non è ancora stata letta. Attacca la chiavetta al PC collegato e premi «Leggi la chiavetta».</p>';
       }
       h += '<button data-azione="lavoro" data-tipo="scansiona">Leggi la chiavetta</button>' +
-        '<a class="bottone primario" href="#/copia">Prepara la copia</a>';
+        '<a class="bottone primario" href="#/copia">Prepara la copia</a>' +
+        (s.chiavetta ? '<p><a href="#/rovinati">I brani rovinati senza una copia sana</a></p>' : '');
       if (s.acoustid && (s.chiavetta || (s.altre && s.altre.length))) {
         h += '<p><small>Se ai brani mancano artista o anno, il sito può riconoscerli di nuovo dall\'audio, senza rileggere la chiavetta.</small></p>' +
           '<button class="piccolo" data-azione="rianalizza">Riconosci di nuovo i brani</button>';
@@ -1231,6 +1235,43 @@
     });
   };
 
+  // --- Brani rovinati ------------------------------------------------------------------------------------------
+
+  var GRAVITA = { '-1': ['non trovato', 'err'], 0: ['poco', 'ok'], 1: ['abbastanza', 'att'], 2: ['molto', 'err'] };
+
+  function vistaRovinati() {
+    caricando();
+    api('GET', '/api/rovinati', null, function (err, r) {
+      if (err) { errore(err); return; }
+      var l = r.brani || [];
+      var h = '<p><a href="#/chiavetta">Torna alla chiavetta</a></p><h1>Brani rovinati</h1>';
+      if (!l.length) {
+        vista.innerHTML = h + '<p class="vuoto">Non ci sono brani rovinati senza una copia sana.</p>';
+        return;
+      }
+      h += '<p class="tenue">Questi brani sono rovinati e sui dischi del PC non c\'è una copia sana. «Poco» vuol dire al massimo un piccolo disturbo, ' +
+        '«abbastanza» qualche salto, «molto» pezzi che mancano o il brano che si ferma. Se ne trovi una copia buona, mettila su un disco del PC e ' +
+        'premi «Cerca negli HD» nella pagina Chiavetta: con la prossima copia va sulla chiavetta al posto di quella rovinata.</p>';
+      var pl = null;
+      for (var i = 0; i < l.length; i++) {
+        var x = l[i];
+        if (x.pl !== pl) {
+          if (pl !== null) { h += '</ul></div>'; }
+          pl = x.pl;
+          var n = 0;
+          for (var k = i; k < l.length && l[k].pl === pl; k++) { n++; }
+          h += '<div class="riquadro"><h2>' + esc(x.playlist) + ' <small>' + plur(n, '1 brano', 'brani') + '</small></h2><ul class="elenco">';
+        }
+        var g = GRAVITA[x.gravita] || GRAVITA[2];
+        h += '<li class="voce"><span class="testo"><b><a href="#/b/' + encodeURIComponent(x.brano) + '?p=' + encodeURIComponent(x.pl) + '">' + esc(x.nome) +
+          '</a></b><span>' + esc(x.file || '') + '</span></span><span class="chip ' + g[1] + '">' + g[0] + '</span>' +
+          '<a class="bottone piccolo" href="' + esc(x.youtube) + '" target="_blank" rel="noopener">YouTube</a></li>';
+      }
+      h += '</ul></div>';
+      vista.innerHTML = h;
+    });
+  }
+
   // --- Importazione --------------------------------------------------------------------------------------------
 
   var gruppiImport = null, volImport = '';
@@ -1334,6 +1375,7 @@
         (p.etichetta ? '<p><small>Chiavetta «' + esc(p.etichetta) + '»' + (p.liberi ? ', liberi ' + peso(p.liberi) : '') + '.</small></p>' : '') + '</div>';
       for (var i = 0; i < p.bloccanti.length; i++) { h += '<div class="nota err">' + esc(p.bloccanti[i]) + '</div>'; }
       for (var j = 0; j < p.avvisi.length; j++) { h += '<div class="nota att">' + esc(p.avvisi[j]) + '</div>'; }
+      if (p.conteggi && (p.conteggi.rovinato || p.conteggi.manca)) { h += '<p><a href="#/rovinati">Guarda quali sono, con il link per cercarli su YouTube</a></p>'; }
       if (!r.pc_collegato) {
         h += '<div class="nota info">Il PC della chiavetta adesso non è collegato: se confermi, la copia partirà appena il programma sul PC si ricollega con la chiavetta attaccata.</div>';
       } else if (!r.chiavetta_collegata && p.volume) {

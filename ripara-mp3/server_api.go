@@ -36,6 +36,7 @@ func (s *server) apiRoutes(mux *http.ServeMux) {
 	h("GET /api/importa", s.apiImportPreview)
 	h("POST /api/importa", s.apiImport)
 	h("POST /api/rianalizza", s.apiReanalyze)
+	h("GET /api/rovinati", s.apiDamaged)
 	h("GET /api/piano", s.apiPlan)
 	h("POST /api/piano/{id}/conferma", s.apiConfirm)
 	h("GET /api/proposte", s.apiProposals)
@@ -763,8 +764,12 @@ func (s *server) apiSong(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	file := ""
+	if f := s.fileDiBranoLocked()[b.ID]; f != nil {
+		file = f.P
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"brano": b, "vista": vistaDiBrano(b, p.perBrano[b.ID]), "candidati": cands,
-		"playlist": lists, "chiavetta": stick})
+		"playlist": lists, "chiavetta": stick, "youtube": ricercaYouTube(b, file)})
 }
 
 func (s *server) apiEditSong(w http.ResponseWriter, r *http.Request) {
