@@ -700,6 +700,8 @@ async function documentBytes() {
       return await doc.pdf.saveDocument();
     } catch (e) {
       console.warn(e);
+      // Succede con firme e immagini sui browser senza OffscreenCanvas (Safari prima di iPadOS 16.4).
+      toast("Questo browser non riesce a scrivere la firma dentro il PDF, quindi il file è senza. Su iPad e iPhone serve iPadOS/iOS 16.4 o più recente; altrimenti firma da un computer.", "error");
     }
   }
   return doc.data;

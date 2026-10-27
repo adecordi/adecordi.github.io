@@ -12,6 +12,8 @@ let pdfViewer;
 let els;
 let ui;
 
+const SAFARI = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|Edg|Android/.test(navigator.userAgent);
+
 let state = new WeakMap(); // documento -> Map(numero pagina -> dati della pagina)
 let boxMode = false;
 
@@ -299,16 +301,29 @@ function bindBoxSelection() {
     const [ax, ay] = b.view.viewport.convertToPdfPoint(b.x, b.y);
     const [bx, by] = b.view.viewport.convertToPdfPoint(b.x1, b.y1);
     const rect = { x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: Math.min(ay, by), y1: Math.max(ay, by) };
-    const d = await pageData(b.view);
-    const units = [...(d.text || [])];
-    if (Array.isArray(d.ocr)) for (const line of d.ocr) units.push(...line.words);
-    const text = textInRect(units, rect);
+    let d = null;
+    const textReady = pageData(b.view).then((data) => {
+      d = data;
+      const units = [...(d.text || [])];
+      if (Array.isArray(d.ocr)) for (const line of d.ocr) units.push(...line.words);
+      return textInRect(units, rect);
+    });
+    // Safari accetta la copia solo se parte subito, dentro il gesto: gli si passa il testo
+    // ancora da calcolare (ClipboardItem con una promessa), come raccomanda Apple.
+    let copied = null;
+    if (SAFARI && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      copied = navigator.clipboard.write([new ClipboardItem({
+        "text/plain": textReady.then((t) => (t ? new Blob([t], { type: "text/plain" }) : Promise.reject(new Error("vuoto")))),
+      })]);
+      copied.catch(() => {});
+    }
+    const text = await textReady;
     if (!text) {
       ui.toast(d.ocr === "pending" ? "Sto ancora riconoscendo il testo di questa pagina: riprova tra poco." : "Nessun testo nel riquadro.");
       return;
     }
     try {
-      await navigator.clipboard.writeText(text);
+      await (copied || navigator.clipboard.writeText(text));
       const lines = text.split("\n").length;
       ui.toast(`Copiato (${lines} ${lines === 1 ? "riga" : "righe"}): «${text.length > 60 ? text.slice(0, 60) + "…" : text}»`);
     } catch {
