@@ -1,7 +1,7 @@
 {
   "name": "lettore-pdf-test",
   "private": true,
-  "description": "Test end-to-end del Lettore PDF e P7M (cartella esclusa dal sito: inizia con _)",
+  "description": "Test end-to-end di C.A.R.T.A. (lettore PDF e P7M) (cartella esclusa dal sito: inizia con _)",
   "scripts": {
     "fixtures": "bash fixtures/genera.sh",
     "server": "node server.cjs",

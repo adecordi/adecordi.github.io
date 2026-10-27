@@ -191,7 +191,7 @@ async function openBytes(bytes, name, parent = null) {
     });
     els.docTitle.textContent = current.name;
     els.docTitle.title = name;
-    document.title = `${current.name} – Lettore PDF e P7M`;
+    document.title = `${current.name} – C.A.R.T.A.`;
     renderSignatures(layers);
     verification.then(() => {
       if (doc === current) renderSignatures(layers);
@@ -782,7 +782,7 @@ async function shareApp() {
   const url = new URL("./", location.href).href;
   if (navigator.share) {
     try {
-      await navigator.share({ title: "Lettore PDF e P7M", text: "Lettore gratuito di PDF e file firmati .p7m, funziona nel browser:", url });
+      await navigator.share({ title: "C.A.R.T.A.", text: "C.A.R.T.A., lettore gratuito di PDF e file firmati .p7m: funziona nel browser.", url });
       return;
     } catch (e) {
       if (e.name === "AbortError") return;
@@ -845,7 +845,7 @@ function updateControls() {
     els.viewerContainer.hidden = true;
     els.altView.hidden = true;
     els.docTitle.textContent = "";
-    document.title = "Lettore PDF e P7M";
+    document.title = "C.A.R.T.A. · Lettore PDF e P7M";
   }
   els.btnBack.hidden = !(hasDoc && doc.parent);
   if (hasDoc && doc.parent) els.btnBack.title = `Torna a ${doc.parent.name}`;

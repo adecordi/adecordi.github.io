@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Componente aggiuntivo di Outlook per il Lettore PDF e P7M.
+<!-- Componente aggiuntivo di Outlook per C.A.R.T.A. (Lettore PDF e P7M).
      Istruzioni di installazione: https://adecordi.github.io/pdf/outlook/ -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -10,7 +10,7 @@
   <Version>1.0.0.0</Version>
   <ProviderName>adecordi</ProviderName>
   <DefaultLocale>it-IT</DefaultLocale>
-  <DisplayName DefaultValue="Lettore PDF e P7M"/>
+  <DisplayName DefaultValue="C.A.R.T.A."/>
   <Description DefaultValue="Apre, verifica e stampa gli allegati PDF, P7M firmati, TSD, M7M e le fatture elettroniche, anche dentro le PEC. I file restano sul tuo dispositivo."/>
   <IconUrl DefaultValue="https://adecordi.github.io/pdf/icons/icon-64.png"/>
   <HighResolutionIconUrl DefaultValue="https://adecordi.github.io/pdf/icons/icon-128.png"/>
@@ -88,7 +88,7 @@
           <bt:Url id="Taskpane.Url" DefaultValue="https://adecordi.github.io/pdf/?outlook=1"/>
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="Group.Label" DefaultValue="Lettore PDF"/>
+          <bt:String id="Group.Label" DefaultValue="C.A.R.T.A."/>
           <bt:String id="Button.Label" DefaultValue="Apri allegati"/>
         </bt:ShortStrings>
         <bt:LongStrings>

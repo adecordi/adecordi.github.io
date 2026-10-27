@@ -315,6 +315,10 @@ body.dragging .drop-card { border-color: var(--accent); }
 }
 .drop-icon .icon { width: 32px; height: 32px; stroke-width: 1.6; }
 .drop-card h1 { margin: 4px 0 6px; font-size: 24px; letter-spacing: -0.01em; }
+.brand { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0 0 14px; }
+.brand strong { font-size: 15px; letter-spacing: 0.18em; color: var(--accent); }
+.brand span { font-size: 12.5px; color: var(--muted); }
+body.outlook .brand { display: none; }
 .drop-hint { margin: 0 0 14px; color: var(--muted); }
 .formats { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
 .features {

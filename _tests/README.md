@@ -1,4 +1,4 @@
-# Test del Lettore PDF e P7M
+# Test di C.A.R.T.A. (lettore PDF e P7M)
 
 Test end-to-end con Playwright (Chromium). La cartella inizia con `_`, quindi GitHub Pages non la pubblica.
 
