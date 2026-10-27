@@ -9,6 +9,8 @@ const els = {
   appStyle: $("appStyle"),
   btnOpen: $("btnOpen"),
   btnOpenBig: $("btnOpenBig"),
+  btnWindow: $("btnWindow"),
+  dropCard: $("dropCard"),
   btnBack: $("btnBack"),
   btnInstall: $("btnInstall"),
   fileInput: $("fileInput"),
@@ -64,6 +66,10 @@ const els = {
 let doc = null;
 let openSeq = 0;
 let printJob = null;
+
+// Aperto da Outlook come componente aggiuntivo (vedi outlook/manifest.xml).
+const OUTLOOK = new URLSearchParams(location.search).has("outlook");
+let outlookActive = false;
 
 /* ------------------------------------------- Caricamento di PDF.js */
 
@@ -190,6 +196,14 @@ async function openBytes(bytes, name, parent = null) {
     if (seq === openSeq) idle();
     updateControls();
   }
+}
+
+// Torna alla schermata iniziale (in Outlook: l'elenco degli allegati).
+async function showHome() {
+  ++openSeq;
+  idle();
+  await closeDocument();
+  updateControls();
 }
 
 async function closeDocument() {
@@ -790,7 +804,7 @@ function updateControls() {
 /* ------------------------------------------------------------ Eventi */
 
 const pickFile = () => els.fileInput.click();
-els.btnOpen.addEventListener("click", pickFile);
+els.btnOpen.addEventListener("click", () => (outlookActive ? showHome() : pickFile()));
 els.btnOpenBig.addEventListener("click", pickFile);
 els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files && els.fileInput.files[0];
@@ -889,7 +903,8 @@ els.btnInstall.addEventListener("click", async () => {
 });
 window.addEventListener("appinstalled", () => (els.btnInstall.hidden = true));
 
-if ("serviceWorker" in navigator && window.isSecureContext) {
+// Dentro Outlook niente service worker: il componente aggiuntivo carica sempre l'ultima versione.
+if ("serviceWorker" in navigator && window.isSecureContext && !OUTLOOK) {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("Service worker non registrato:", e));
 }
 
@@ -918,8 +933,33 @@ async function openSharedFile() {
   }
 }
 
+// Documento passato da un'altra finestra del lettore (pulsante "Apri in una finestra" di Outlook).
+function receiveFromOpener() {
+  if (!new URLSearchParams(location.search).has("ricevi") || !window.opener) return;
+  history.replaceState(null, "", location.pathname);
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.opener || e.origin !== location.origin || !e.data || e.data.type !== "lettore-file") return;
+    openBytes(new Uint8Array(e.data.bytes.buffer || e.data.bytes), e.data.name);
+  });
+  window.opener.postMessage({ type: "lettore-pronto" }, location.origin);
+}
+
 updateControls();
 openSharedFile();
+receiveFromOpener();
+
+if (OUTLOOK) {
+  import("./outlook.js")
+    .then((m) => m.start({
+      els, openBytes, showHome, pickFile, toast, busy, idle,
+      currentFile: () => (doc ? { bytes: doc.sourceBytes, name: doc.sourceName } : null),
+    }))
+    .then((active) => {
+      outlookActive = active;
+      updateControls();
+    })
+    .catch((e) => console.warn("Modalità Outlook non disponibile:", e));
+}
 
 // PDF.js e il suo worker si caricano subito in background, mentre l'utente sceglie
 // il file (con il risparmio dati attivo, invece, solo quando servono).

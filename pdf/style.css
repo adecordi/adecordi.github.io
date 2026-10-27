@@ -273,6 +273,14 @@ main {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2), 0 4px 14px rgb(0 0 0 / 0.08);
 }
 
+/* Link nei PDF: niente riquadro giallo al passaggio del mouse. Molti programmi
+   (Word, LibreOffice, LaTeX, convertitori HTML) salvano l'area del link sfasata
+   rispetto al testo e l'evidenziazione risulterebbe spostata; come in Chrome e
+   Acrobat restano la manina e il suggerimento con l'indirizzo. */
+#viewer .annotationLayer .linkAnnotation > a:hover { opacity: 1; background: none; box-shadow: none; }
+#viewer .annotationLayer .linkAnnotation.hasBorder:hover { background-color: transparent; }
+#viewer .annotationLayer .linkAnnotation > a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .welcome {
   position: absolute;
   inset: 0;
@@ -580,6 +588,37 @@ body.dragging .drop-overlay { display: grid; }
   opacity: 0;
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------ Outlook */
+
+body.outlook .drop-card { border-style: solid; text-align: left; padding: 22px 18px 16px; }
+body.outlook .drop-card .drop-icon { display: none; }
+body.outlook .drop-card h1 { margin: 0 0 4px; font-size: 18px; }
+body.outlook .drop-card .drop-hint { margin: 0 0 12px; }
+body.outlook .welcome { place-items: start center; }
+.att-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.att-list.nested { margin: 6px 0 4px 18px; padding-left: 10px; border-left: 2px solid var(--border); }
+.att-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.att-item:hover { background: var(--surface-2); }
+.att-item > .icon { color: var(--muted); }
+.att-item.supported > .icon { color: var(--accent); }
+.att-text { display: grid; min-width: 0; }
+.att-text strong { font-weight: 600; overflow-wrap: anywhere; }
+.att-text span { font-size: 12.5px; color: var(--muted); }
+.att-empty { padding: 6px 0; font-size: 13px; color: var(--muted); }
 
 /* ------------------------------------------------------------ Fattura elettronica */
 

@@ -32,6 +32,9 @@
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
       <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-clip" viewBox="0 0 24 24"><path d="m16 6-8.41 8.59a2 2 0 0 0 2.83 2.83l8.41-8.59a4 4 0 0 0-5.66-5.66l-8.38 8.55a6 6 0 1 0 8.49 8.49l8.37-8.55"/></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></symbol>
       <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
       <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
@@ -93,6 +96,7 @@
     </div>
 
     <div class="tb-group tb-actions">
+      <button class="btn icon-only" id="btnWindow" type="button" hidden title="Apri in una finestra grande" aria-label="Apri in una finestra grande"><svg class="icon"><use href="#i-window"/></svg></button>
       <div class="share-wrap">
         <button class="btn" id="btnShare" type="button" title="Condividi il lettore" aria-haspopup="menu" aria-expanded="false" aria-controls="shareMenu">
           <svg class="icon"><use href="#i-share"/></svg><span class="btn-label">Condividi</span>
@@ -132,6 +136,7 @@
           <li><svg class="icon"><use href="#i-shield-ok"/></svg><span><strong>Firma digitale.</strong> Mostra chi ha firmato e verifica che il documento non sia stato modificato.</span></li>
           <li><svg class="icon"><use href="#i-print"/></svg><span><strong>Stampa e salva.</strong> Stampa il documento contenuto nel p7m o salvalo come PDF normale.</span></li>
         </ul>
+        <p class="formats"><a href="outlook/">Usalo anche dentro Outlook</a> per aprire gli allegati direttamente dalla posta.</p>
         <button class="btn subtle" id="btnInstall" type="button" hidden>
           <svg class="icon"><use href="#i-download"/></svg><span>Installa come app</span>
         </button>
