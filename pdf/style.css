@@ -264,6 +264,9 @@ main {
   outline: none;
 }
 .pdfViewer { padding: 6px 0 16px; }
+/* PDF.js dà alla pagina la larghezza del contenuto e ci aggiunge fuori un bordo di 9px:
+   con il border-box generale la tela verrebbe schiacciata di 18px e il testo piccolo sfocato. */
+.pdfViewer .page { box-sizing: content-box; }
 /* Ombra della pagina: il bordo di PDF.js è trasparente, quindi la disegniamo all'interno. */
 .pdfViewer .page::after {
   content: "";
