@@ -6,7 +6,8 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash: non convertire "/C=IT/..." in percorsi Windows
 
-HERE="$(cd "$(dirname "$0")" && pwd)"
+# Git Bash: "C:/..." (pwd -W), perché con MSYS_NO_PATHCONV python e node non capirebbero "/c/..."
+HERE="$(cd "$(dirname "$0")" && { pwd -W 2>/dev/null || pwd; })"
 OUT="$HERE/out"
 PY="$(command -v python3 || command -v python)"
 rm -rf "$OUT" && mkdir -p "$OUT" && cd "$OUT"
@@ -31,8 +32,23 @@ X
 q openssl req -newkey rsa:2048 -nodes -keyout rossi.key -out rossi.csr \
   -subj "/C=IT/O=NON PRESENTE/CN=ROSSI MARIO/SN=ROSSI/GN=MARIO/serialNumber=TINIT-RSSMRA80A01H501U/dnQualifier=2026123456"
 q openssl x509 -req -in rossi.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out rossi.crt -days 1095 -extfile ext.cnf -extensions signer
-q openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout bianchi.key -out bianchi.csr -utf8 \
-  -subj "/C=IT/O=Comune di Prova/CN=BIANCHI LUCÌA/SN=BIANCHI/GN=LUCÌA/serialNumber=TINIT-BNCLCU85M41F205X"
+# Soggetto con lettere accentate: da file, perché su Windows openssl riceve gli argomenti
+# nella codifica di sistema e la "Ì" arriva come UTF-8 non valido.
+cat > bianchi.cnf <<'X'
+[req]
+prompt=no
+utf8=yes
+string_mask=utf8only
+distinguished_name=dn
+[dn]
+C=IT
+O=Comune di Prova
+CN=BIANCHI LUCÌA
+SN=BIANCHI
+GN=LUCÌA
+serialNumber=TINIT-BNCLCU85M41F205X
+X
+q openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout bianchi.key -out bianchi.csr -config bianchi.cnf
 q openssl x509 -req -in bianchi.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out bianchi.crt -days 1095 -extfile ext.cnf -extensions signer
 q openssl genrsa -out old.key 2048
 "$PY" "$HERE/cert_scaduto.py"

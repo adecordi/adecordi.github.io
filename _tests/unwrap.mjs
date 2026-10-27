@@ -1,8 +1,10 @@
 // Estrazione e verifica delle buste firmate con p7m.js (in Node, senza browser).
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { unwrap, sniff, innerFileName } from "../pdf/p7m.js";
 const { FX, check } = createRequire(import.meta.url)("./common.cjs");
+// p7m.js è un modulo ES ma pdf/ non ha "type": "module": Node < 22 lo leggerebbe come CommonJS
+const src = readFileSync(new URL("../pdf/p7m.js", import.meta.url));
+const { unwrap, sniff, innerFileName } = await import("data:text/javascript;base64," + src.toString("base64"));
 
 // file -> [nome estratto, tipo, esito atteso per ogni busta, partendo dall'esterno]
 const cases = {
