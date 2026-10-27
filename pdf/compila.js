@@ -8,6 +8,11 @@ import { h, icon } from "./dom.js";
 const STORE = "lettore-compilatore";
 const TIMEOUT = 180000;
 
+// Indirizzi della rete locale: un compilatore lì può rispondere anche in http.
+function isLocalHost(host) {
+  return host === "localhost" || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}
+
 export function config() {
   try {
     const c = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -26,7 +31,7 @@ export function linkFromHash() {
   history.replaceState(null, "", location.pathname + location.search);
   try {
     const u = new URL(url);
-    if (u.protocol !== "https:" && u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return false;
+    if (u.protocol !== "https:" && !isLocalHost(u.hostname)) return false;
     localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave }));
     return true;
   } catch {
@@ -100,11 +105,15 @@ export async function compila(file, ui) {
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
         body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes }),
         signal: ctrl.signal,
+        // Chrome ed Edge: da una pagina https un indirizzo http della rete locale si può chiamare
+        // solo dichiarandolo (e con il permesso «rete locale»). Gli altri browser ignorano l'opzione.
+        ...(cfg.url.startsWith("http:") ? { targetAddressSpace: "local" } : {}),
       });
     } catch (e) {
       if (e.name === "AbortError") throw new Error("Compilazione annullata.");
       // Chrome ed Edge chiedono il permesso per la rete locale: se è stato negato, la richiesta fallisce qui.
-      throw new Error("Compilatore non raggiungibile. Serve Tailscale acceso e, in Chrome o Edge, il permesso «accesso alla rete locale» per questo sito (icona a sinistra dell'indirizzo → Impostazioni sito).");
+      const where = cfg.url.startsWith("http:") ? "essere collegati alla rete dell'ufficio" : "Tailscale acceso";
+      throw new Error(`Compilatore non raggiungibile. Serve ${where} e, in Chrome o Edge, il permesso «accesso alla rete locale» per questo sito (icona a sinistra dell'indirizzo → Impostazioni sito).`);
     }
     const out = await res.json().catch(() => ({}));
     if (res.status === 401) throw new Error("Il compilatore non riconosce questo dispositivo: ricollegalo dalla pagina del compilatore.");
