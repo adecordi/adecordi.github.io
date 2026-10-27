@@ -1013,6 +1013,7 @@ function receiveFromOpener() {
 if (compilatore.linkFromHash()) {
   toast("Compilatore collegato: il pulsante «Compila» compare quando apri un PDF.");
 }
+compilatore.pickupFromHash({ busy, idle, toast }).then((file) => file && openBytes(file.bytes, file.name));
 updateControls();
 openSharedFile();
 receiveFromOpener();

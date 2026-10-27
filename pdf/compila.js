@@ -39,6 +39,44 @@ export function linkFromHash() {
   }
 }
 
+/**
+ * «Apri in C.A.R.T.A.» (comando di iPad): il file è parcheggiato sul compilatore e il link porta
+ * #ritira=<id>&da=<indirizzo>. L'id vale una volta sola e per pochi minuti, quindi non serve la chiave.
+ * @returns {Promise<null | { bytes: Uint8Array, name: string }>}
+ */
+export async function pickupFromHash(ui) {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const id = p.get("ritira");
+  const from = p.get("da");
+  if (!id || !from) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  let base;
+  try {
+    const u = new URL(from);
+    if (u.protocol !== "https:" && !isLocalHost(u.hostname)) return null;
+    base = u.href.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+  ui.busy("Ricevo il documento…");
+  try {
+    const res = await fetch(`${base}/ritira/${encodeURIComponent(id)}`, {
+      ...(base.startsWith("http:") ? { targetAddressSpace: "local" } : {}),
+    });
+    if (!res.ok) {
+      const out = await res.json().catch(() => ({}));
+      throw new Error(out.errore || `Il documento non è arrivato (${res.status}).`);
+    }
+    const name = decodeURIComponent(res.headers.get("X-Nome") || "documento.pdf");
+    return { bytes: new Uint8Array(await res.arrayBuffer()), name };
+  } catch (e) {
+    ui.toast(e.name === "TypeError" ? "Non raggiungo il compilatore: serve Tailscale acceso." : e.message, "error");
+    return null;
+  } finally {
+    ui.idle();
+  }
+}
+
 export function unlink() {
   try {
     localStorage.removeItem(STORE);
