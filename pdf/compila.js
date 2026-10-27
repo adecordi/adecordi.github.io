@@ -103,7 +103,8 @@ export async function compila(file, ui) {
       });
     } catch (e) {
       if (e.name === "AbortError") throw new Error("Compilazione annullata.");
-      throw new Error("Compilatore non raggiungibile: questo dispositivo deve essere collegato alla rete privata (Tailscale acceso).");
+      // Chrome ed Edge chiedono il permesso per la rete locale: se è stato negato, la richiesta fallisce qui.
+      throw new Error("Compilatore non raggiungibile. Serve Tailscale acceso e, in Chrome o Edge, il permesso «accesso alla rete locale» per questo sito (icona a sinistra dell'indirizzo → Impostazioni sito).");
     }
     const out = await res.json().catch(() => ({}));
     if (res.status === 401) throw new Error("Il compilatore non riconosce questo dispositivo: ricollegalo dalla pagina del compilatore.");
