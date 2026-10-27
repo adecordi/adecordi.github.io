@@ -5,10 +5,10 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 
-const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs"];
+const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs", "strumenti.cjs"];
 const selected = process.argv.slice(2).length ? process.argv.slice(2).map((t) => TESTS.find((x) => x.startsWith(t)) || t) : TESTS;
 
-if (!fs.existsSync(path.join(__dirname, "fixtures", "out", "doc.pdf.p7m"))) {
+if (!fs.existsSync(path.join(__dirname, "fixtures", "out", "scansione.pdf"))) {
   console.log("Genero i file di prova…");
   const r = spawnSync("bash", [path.join(__dirname, "fixtures", "genera.sh")], { stdio: "inherit" });
   if (r.status !== 0) process.exit(r.status || 1);

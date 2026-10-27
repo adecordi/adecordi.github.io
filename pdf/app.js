@@ -1,5 +1,6 @@
 import { unwrap, sniff, innerFileName } from "./p7m.js";
 import { h, icon } from "./dom.js";
+import * as compilatore from "./compila.js";
 
 const SHARED_CACHE = "lettore-pdf-condivisi";
 const BUSY_DELAY = 200; // le aperture rapide non mostrano l'indicatore di attesa
@@ -27,6 +28,14 @@ const els = {
   zoomCustom: $("zoomCustom"),
   btnRotate: $("btnRotate"),
   btnFind: $("btnFind"),
+  btnBox: $("btnBox"),
+  btnSign: $("btnSign"),
+  btnFill: $("btnFill"),
+  fillPanel: $("fillPanel"),
+  fillBody: $("fillBody"),
+  fillClose: $("fillClose"),
+  signBar: $("signBar"),
+  signDone: $("signDone"),
   btnDownload: $("btnDownload"),
   btnShare: $("btnShare"),
   shareMenu: $("shareMenu"),
@@ -100,7 +109,7 @@ function loadViewer() {
   if (!viewerLoading) {
     const workerPort = startWorker();
     viewerLoading = Promise.all([import("./viewer.js"), loadStylesheet("lib/pdfjs/pdf_viewer.min.css")]).then(([mod]) => {
-      mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, h, workerPort });
+      mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, toast, h, workerPort });
       V = mod;
       return mod;
     });
@@ -215,6 +224,8 @@ async function closeDocument() {
   if (V) V.closeFind();
   els.sigPanel.hidden = true;
   els.sigChip.hidden = true;
+  els.fillPanel.hidden = true;
+  els.signBar.hidden = true;
   els.altView.replaceChildren();
   els.altView.hidden = true;
   if (!old) return;
@@ -701,6 +712,49 @@ async function downloadDocument() {
   saveBytes(data, current.name, current.type.mime);
 }
 
+/* ------------------------------------------------- Firma e compilazione */
+
+async function addSignature() {
+  if (!doc || !doc.pdf) return;
+  const current = doc;
+  let file;
+  try {
+    const { chiediFirma } = await import("./firma.js");
+    file = await chiediFirma();
+  } catch (e) {
+    toast(`Firma non disponibile: ${e.message || e}`, "error");
+    return;
+  }
+  if (!file || doc !== current) return;
+  try {
+    await V.addImage(file);
+    els.signBar.hidden = false;
+  } catch (e) {
+    toast(`Non riesco a inserire la firma: ${e.message || e}`, "error");
+  }
+}
+
+function endSignature() {
+  if (V) V.endImage();
+  els.signBar.hidden = true;
+}
+
+async function fillForm() {
+  if (!doc || !doc.pdf) return;
+  endSignature();
+  let result;
+  try {
+    result = await compilatore.compila({ name: doc.name, bytes: await documentBytes() }, { busy, idle, toast });
+  } catch (e) {
+    toast(e.message || String(e), "error");
+    return;
+  }
+  if (!result) return;
+  await openBytes(result.bytes, result.name);
+  els.sigPanel.hidden = true;
+  compilatore.renderReport(els.fillPanel, els.fillBody, result.report);
+}
+
 /* --------------------------------------------------------- Condivisione */
 
 const ENVELOPE_MIME = { p7m: "application/pkcs7-mime", p7s: "application/pkcs7-signature", tsd: "application/timestamped-data" };
@@ -797,6 +851,8 @@ function updateControls() {
   if (hasDoc && doc.parent) els.btnBack.title = `Torna a ${doc.parent.name}`;
   els.viewControls.hidden = !isPdf;
   els.btnDownload.disabled = !hasDoc;
+  els.btnSign.disabled = !isPdf;
+  els.btnFill.hidden = !(isPdf && compilatore.config());
   els.btnShare.title = hasDoc ? "Condividi il documento" : "Condividi il lettore";
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
 }
@@ -820,6 +876,11 @@ document.addEventListener("pointerdown", (e) => {
   if (!els.shareMenu.hidden && !e.target.closest(".share-wrap")) closeShareMenu();
 });
 els.btnPrint.addEventListener("click", printDocument);
+els.btnSign.addEventListener("click", addSignature);
+els.signDone.addEventListener("click", endSignature);
+els.btnFill.addEventListener("click", fillForm);
+els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
+els.btnBox.addEventListener("click", () => V && V.setBoxMode(!V.isBoxMode()));
 els.sigChip.addEventListener("click", () => toggleSigPanel());
 els.sigClose.addEventListener("click", () => toggleSigPanel(false));
 
@@ -881,6 +942,9 @@ window.addEventListener("keydown", (e) => {
     V.zoomReset();
   } else if (e.key === "Escape") {
     if (!els.shareMenu.hidden) closeShareMenu();
+    else if (!els.signBar.hidden) endSignature();
+    else if (V && V.isBoxMode()) V.setBoxMode(false);
+    else if (!els.fillPanel.hidden) els.fillPanel.hidden = true;
     else if (!els.sigPanel.hidden) toggleSigPanel(false);
     else if (V) V.closeFind();
   }
@@ -944,6 +1008,9 @@ function receiveFromOpener() {
   window.opener.postMessage({ type: "lettore-pronto" }, location.origin);
 }
 
+if (compilatore.linkFromHash()) {
+  toast("Compilatore collegato: il pulsante «Compila» compare quando apri un PDF.");
+}
 updateControls();
 openSharedFile();
 receiveFromOpener();

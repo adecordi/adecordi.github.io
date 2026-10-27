@@ -1,6 +1,6 @@
 // Service worker: rende il lettore utilizzabile anche offline e riceve i file
 // condivisi da altre app (Android). Aggiornare VERSION a ogni modifica dei file.
-const VERSION = "2026-10-27.3";
+const VERSION = "2026-10-27.4";
 const CACHE = `lettore-pdf-${VERSION}`;
 const SHARED_CACHE = "lettore-pdf-condivisi";
 
@@ -10,6 +10,9 @@ const CORE = [
   "p7m.js",
   "dom.js",
   "viewer.js",
+  "testo.js",
+  "firma.js",
+  "compila.js",
   "fattura.js",
   "print-encoder.js",
   "outlook.js",

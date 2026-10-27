@@ -717,6 +717,127 @@ body.outlook .welcome { place-items: start center; }
 .inv-attachment-actions .btn { min-height: 32px; padding: 0 10px; background: #fff; color: #1c2130; border-color: #dde1e8; }
 .inv-footnote { margin: 24px 0 0; font-size: 12px; color: #5b6475; }
 
+/* ------------------------------------------- Testo riconosciuto (OCR) */
+
+/* Come lo strato di testo di PDF.js: invisibile, ma si seleziona e si copia. */
+.ocrLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; z-index: 0; color-scheme: only light; }
+.ocrLayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; font-family: sans-serif; }
+.ocrLayer ::selection { background: rgb(0 90 255 / 0.25); }
+.ocrLayer br::selection { background: transparent; }
+.ocr-status {
+  position: fixed;
+  left: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 20;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}
+
+/* Selezione a riquadro: pulsante attivo, o Alt + trascina. */
+#btnBox[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.box-mode .page { cursor: crosshair; touch-action: none; }
+.box-mode :is(.textLayer, .ocrLayer) { user-select: none; pointer-events: none; }
+.boxSel { position: absolute; z-index: 5; border: 1.5px dashed #2357d1; background: rgb(35 87 209 / 0.12); pointer-events: none; }
+
+/* ------------------------------------------------------------- Firma */
+
+.sign-dialog { width: min(560px, calc(100vw - 32px)); }
+.sign-tabs { display: flex; gap: 4px; margin: 6px 0 10px; border-bottom: 1px solid var(--border); }
+.sign-tab {
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sign-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.sign-area canvas, .sign-saved {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+.sign-area canvas.sign-preview:not(.photo) { aspect-ratio: 4 / 1; margin-top: 10px; }
+.sign-area canvas.photo { margin-top: 10px; }
+.sign-pad { touch-action: none; cursor: crosshair; }
+.sign-pane { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sign-pane > .btn.subtle { align-self: flex-end; }
+.modal .sign-typed { font-family: "Segoe Script", "Lucida Handwriting", "Brush Script MT", cursive; font-size: 18px; }
+.modal p.sign-hint { margin: 0; }
+.sign-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.sign-colors { display: inline-flex; align-items: center; gap: 8px; }
+.sign-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  outline: 1px solid var(--border);
+  background: var(--ink);
+  cursor: pointer;
+}
+.sign-color[aria-pressed="true"] { outline: 2px solid var(--accent); }
+.sign-keep { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.modal .sign-keep input { width: auto; margin: 0; }
+.sign-bar {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  z-index: 15;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+  font-size: 14px;
+}
+/* Il testo alternativo delle immagini di PDF.js non serve per una firma. */
+#viewer .stampEditor .altText { display: none; }
+
+/* ------------------------------------------------------- Compilazione */
+
+.fill-dialog { width: min(520px, calc(100vw - 32px)); }
+.modal p.fill-doc { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.fill-label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+.fill-dialog textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.fill-summary { margin: 0 0 4px; font-weight: 600; }
+.fill-hint { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+#fillPanel h3 { margin: 16px 0 6px; font-size: 14px; }
+.fill-list { margin: 0; padding: 0; list-style: none; }
+.fill-list li { display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.fill-list strong { flex: 1 1 100%; font-weight: 600; }
+.fill-list span { overflow-wrap: anywhere; }
+.fill-list em { margin-left: auto; color: var(--muted); font-style: normal; font-size: 12.5px; }
+.fill-list.todo strong { color: var(--bad); }
+.fill-list.todo span { color: var(--muted); }
+
 /* ------------------------------------------------------------ Schermi piccoli */
 
 @media (max-width: 760px) {

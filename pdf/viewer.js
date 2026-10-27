@@ -2,6 +2,7 @@
 // dopo l'avvio, così l'interfaccia è utilizzabile prima che PDF.js sia pronto.
 import * as pdfjsLib from "./lib/pdfjs/pdf.min.mjs";
 import * as pdfjsViewer from "./lib/pdfjs/pdf_viewer.min.mjs";
+import * as testo from "./testo.js";
 
 const LIB = new URL("./lib/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = LIB + "pdf.worker.min.mjs";
@@ -50,6 +51,7 @@ export function init(elements, hooks) {
     imageResourcesPath: LIB + "images/",
   });
   linkService.setViewer(pdfViewer);
+  testo.init(pdfjsLib, pdfViewer, eventBus, els, hooks);
   bindPages();
   bindZoom();
   bindFind();
@@ -193,6 +195,67 @@ function updateZoomControls(scale, preset) {
     els.zoomCustom.textContent = `${Math.round(scale * 100)}%`;
     els.zoomCustom.hidden = false;
     els.zoomSelect.value = "custom";
+  }
+}
+
+/* ------------------------------------------------- Testo e immagini */
+
+export const setBoxMode = testo.setBoxMode;
+export const isBoxMode = testo.isBoxMode;
+
+let imageGuard = null;
+
+/**
+ * Inserisce un'immagine (la firma) al centro della parte visibile della pagina corrente,
+ * con l'editor «timbro» di PDF.js: si sposta e si ridimensiona, e «Salva» la scrive nel PDF.
+ */
+export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }) {
+  const { AnnotationEditorType } = pdfjsLib;
+  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.STAMP) {
+    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
+    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.STAMP };
+    await changed;
+  }
+  const view = pdfViewer.getPageView(pdfViewer.currentPageNumber - 1);
+  const layer = view && view.annotationEditorLayer && view.annotationEditorLayer.annotationEditorLayer;
+  if (!layer) throw new Error("pagina non ancora pronta");
+  const page = view.div.getBoundingClientRect();
+  const box = els.viewerContainer.getBoundingClientRect();
+  const top = Math.max(page.top, box.top);
+  const bottom = Math.min(page.bottom, box.bottom);
+  // PDF.js le darebbe fino a 3/4 della pagina: una firma è larga circa 6 cm (al massimo 2,5 cm
+  // d'altezza). La misura va fissata subito, prima che PDF.js finisca di leggere l'immagine.
+  const bmp = await createImageBitmap(file);
+  let w = options.widthPt;
+  let hgt = (w * bmp.height) / bmp.width;
+  if (hgt > options.maxHeightPt) [w, hgt] = [(w * options.maxHeightPt) / hgt, options.maxHeightPt];
+  bmp.close();
+  const editor = layer.createAndAddNewEditor({ offsetX: page.width / 2, offsetY: (top + bottom) / 2 - page.top }, true, { bitmapFile: file });
+  if (editor) {
+    const [pw, ph] = editor.pageDimensions;
+    editor.width = w / pw;
+    editor.height = hgt / ph;
+  }
+  // In modalità «timbro» un clic su un punto vuoto aprirebbe la scelta di un'altra immagine:
+  // finché si sistema la firma, quei clic chiudono la modalità invece.
+  if (!imageGuard) {
+    imageGuard = (e) => {
+      if (e.target.closest(".stampEditor, .editToolbar")) return;
+      if (!e.target.closest(".annotationEditorLayer")) return;
+      e.stopPropagation();
+      e.preventDefault();
+      endImage();
+    };
+    els.viewer.addEventListener("pointerdown", imageGuard, true);
+  }
+}
+
+/** Chiude la modalità di inserimento: le firme restano nella pagina. */
+export function endImage() {
+  if (imageGuard) els.viewer.removeEventListener("pointerdown", imageGuard, true);
+  imageGuard = null;
+  if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE) {
+    pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
   }
 }
 

@@ -77,6 +77,7 @@ echo 01 > tsaserial
 echo "Documenti…"
 "$PY" "$HERE/pdf_prova.py"
 "$PY" "$HERE/immagine.py"
+"$PY" "$HERE/scansione.py"
 "$PY" "$HERE/pdf_grande.py"
 "$PY" "$HERE/fatture.py"
 node "$HERE/links.cjs"

@@ -1,0 +1,136 @@
+// «Compila»: manda il modulo PDF a un compilatore privato, che lo restituisce
+// compilato. Il sito non contiene né l'indirizzo né la chiave del compilatore:
+// si collegano una volta per dispositivo aprendo un link del compilatore stesso
+// (…/pdf/#compilatore=<indirizzo>&chiave=<chiave>), e restano solo in questo browser.
+
+import { h, icon } from "./dom.js";
+
+const STORE = "lettore-compilatore";
+const TIMEOUT = 180000;
+
+export function config() {
+  try {
+    const c = JSON.parse(localStorage.getItem(STORE) || "null");
+    return c && c.url && c.chiave ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Legge dal frammento dell'indirizzo il collegamento al compilatore. Vero se trovato. */
+export function linkFromHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const url = p.get("compilatore");
+  const chiave = p.get("chiave");
+  if (!url || !chiave) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" && u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return false;
+    localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function unlink() {
+  try {
+    localStorage.removeItem(STORE);
+  } catch { /* niente da fare */ }
+}
+
+let dialog = null;
+
+// Chiede le istruzioni facoltative; null se annullato.
+function askInstructions(name) {
+  if (!dialog) {
+    dialog = h("dialog", { class: "modal fill-dialog", "aria-labelledby": "fillTitle" },
+      h("form", { method: "dialog" },
+        h("h2", { id: "fillTitle" }, icon("wand"), " Compila con i miei dati"),
+        h("p", { class: "fill-doc" }),
+        h("p", { class: "fill-hint" }, "Il modulo va al tuo compilatore privato, che lo riempie con i dati che conosce e te lo restituisce da controllare. Firma, consensi e scelte personali restano a te."),
+        h("label", { class: "fill-label", for: "fillNotes" }, "Istruzioni (facoltative)"),
+        h("textarea", { id: "fillNotes", rows: 3, placeholder: "Es.: è per conto della Vinicola; come recapito usa la PEC" }),
+        h("div", { class: "modal-actions" },
+          h("button", { class: "btn", type: "submit", value: "cancel", formnovalidate: true }, "Annulla"),
+          h("button", { class: "btn primary", type: "submit", value: "ok" }, "Compila"))));
+    document.body.append(dialog);
+  }
+  dialog.querySelector(".fill-doc").textContent = name;
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      resolve(dialog.returnValue === "ok" ? dialog.querySelector("#fillNotes").value.trim() : null);
+    }, { once: true });
+    dialog.returnValue = "";
+    dialog.showModal();
+  });
+}
+
+function toBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function fromBase64(b64) {
+  const s = atob(b64);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+/**
+ * @param {{ name: string, bytes: Uint8Array }} file modulo da compilare
+ * @param {{ busy: Function, idle: Function, toast: Function }} ui
+ * @returns {Promise<null | { bytes: Uint8Array, name: string, report: object }>}
+ */
+export async function compila(file, ui) {
+  const cfg = config();
+  if (!cfg) return null;
+  const notes = await askInstructions(file.name);
+  if (notes === null) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  ui.busy("Compilo il modulo… (può volerci un minuto)", { onCancel: () => ctrl.abort() });
+  try {
+    let res;
+    try {
+      res = await fetch(cfg.url + "/compila", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+        body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes }),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Compilazione annullata.");
+      throw new Error("Compilatore non raggiungibile: questo dispositivo deve essere collegato alla rete privata (Tailscale acceso).");
+    }
+    const out = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error("Il compilatore non riconosce questo dispositivo: ricollegalo dalla pagina del compilatore.");
+    if (!res.ok || !out.pdf) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+    const base = file.name.replace(/\.pdf$/i, "");
+    return { bytes: fromBase64(out.pdf), name: `${base} (compilato).pdf`, report: out };
+  } finally {
+    clearTimeout(timer);
+    ui.idle();
+  }
+}
+
+/** Riquadro con quello che è stato compilato e quello che resta da fare a mano. */
+export function renderReport(panel, body, report) {
+  const compilati = report.compilati || [];
+  const mancanti = report.mancanti || [];
+  body.replaceChildren(
+    h("p", { class: "fill-summary" },
+      compilati.length ? `${compilati.length} ${compilati.length === 1 ? "campo compilato" : "campi compilati"}` : "Nessun campo compilato",
+      report.metodo === "posizioni" ? " (modulo senza campi: testo aggiunto sopra la pagina, puoi spostarlo)." : "."),
+    h("p", { class: "fill-hint" }, "Controlla tutto prima di salvarlo o mandarlo."),
+    mancanti.length ? h("section", null, h("h3", null, "Da completare a mano"),
+      h("ul", { class: "fill-list todo" }, mancanti.map((m) =>
+        h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null)))) : null,
+    compilati.length ? h("section", null, h("h3", null, "Compilati"),
+      h("ul", { class: "fill-list" }, compilati.map((c) =>
+        h("li", null, h("strong", null, c.campo), h("span", null, String(c.valore)),
+          c.pagina ? h("em", null, `pag. ${c.pagina}`) : null)))) : null);
+  panel.hidden = false;
+}
