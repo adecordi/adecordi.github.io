@@ -11,10 +11,14 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="lib/pdfjs/pdf_viewer.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" id="appStyle">
   <style id="pageStyle"></style>
   <script type="module" src="app.js"></script>
+  <link rel="modulepreload" href="p7m.js">
+  <link rel="modulepreload" href="dom.js">
+  <link rel="modulepreload" href="viewer.js" fetchpriority="low">
+  <link rel="modulepreload" href="lib/pdfjs/pdf.min.mjs" fetchpriority="low">
+  <link rel="modulepreload" href="lib/pdfjs/pdf_viewer.min.mjs" fetchpriority="low">
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -42,6 +46,7 @@
 
   <header class="toolbar" id="toolbar">
     <div class="tb-group tb-file">
+      <button class="btn icon-only" id="btnBack" type="button" hidden aria-label="Torna indietro"><svg class="icon"><use href="#i-prev"/></svg></button>
       <button class="btn" id="btnOpen" type="button" title="Apri un file (Ctrl+O)">
         <svg class="icon"><use href="#i-open"/></svg><span class="btn-label">Apri</span>
       </button>

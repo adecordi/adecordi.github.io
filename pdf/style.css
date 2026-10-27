@@ -189,6 +189,7 @@ body {
 .sig-chip.valid { background: var(--ok-bg); color: var(--ok); }
 .sig-chip.invalid { background: var(--bad-bg); color: var(--bad); }
 .sig-chip.unknown { background: var(--warn-bg); color: var(--warn); }
+.sig-chip.pending { background: var(--surface-2); color: var(--muted); }
 
 /* ------------------------------------------------------------ Ricerca */
 
@@ -377,6 +378,7 @@ body.dragging .drop-card { border-color: var(--accent); }
 .summary.valid { background: var(--ok-bg); color: var(--ok); }
 .summary.invalid { background: var(--bad-bg); color: var(--bad); }
 .summary.unknown { background: var(--warn-bg); color: var(--warn); }
+.summary.pending { background: var(--surface-2); color: var(--muted); }
 .summary p { color: var(--text); }
 
 .layer-title {
@@ -410,6 +412,7 @@ body.dragging .drop-card { border-color: var(--accent); }
 .badge.valid { background: var(--ok-bg); color: var(--ok); }
 .badge.invalid { background: var(--bad-bg); color: var(--bad); }
 .badge.unknown { background: var(--warn-bg); color: var(--warn); }
+.badge.pending { background: var(--surface-2); color: var(--muted); }
 .signer-msg { margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13.5px; }
 .facts dt { color: var(--muted); }
@@ -535,6 +538,112 @@ body.dragging .drop-overlay { display: grid; }
 
 #printContainer, #printNotice { display: none; }
 
+/* Iframe usato per la stampa nativa del PDF (Chrome/Edge su computer). */
+.print-frame {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ Fattura elettronica */
+
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 900px;
+  margin: 0 auto 12px;
+  padding: 4px;
+  width: max-content;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.tab {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+
+.invoice { font-size: 14px; line-height: 1.45; }
+.inv-body + .inv-body { margin-top: 36px; padding-top: 28px; border-top: 3px double #c9ced8; }
+.inv-lot { margin: 0 0 6px; font-size: 12px; color: #5b6475; }
+.inv-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px 24px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #1c2130;
+}
+.inv-kind { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #2357d1; }
+.inv-head h2 { margin: 2px 0 0; font-size: 22px; letter-spacing: -0.01em; }
+.inv-total { text-align: right; }
+.inv-total span { display: block; font-size: 12px; color: #5b6475; }
+.inv-total strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+.inv-party { padding: 12px 14px; border: 1px solid #dde1e8; border-radius: 8px; break-inside: avoid; }
+.inv-parties ~ .inv-party { margin-top: 12px; }
+.inv-party h3, .inv-section h3 {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5b6475;
+}
+.inv-party-name { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+.inv-facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; font-size: 13px; }
+.inv-facts dt { color: #5b6475; }
+.inv-facts dd { margin: 0; overflow-wrap: anywhere; }
+.inv-section { margin: 20px 0 0; }
+.inv-section > h3 { break-after: avoid; page-break-after: avoid; }
+.inv-payment, .inv-attachment, .inv-totals { break-inside: avoid; page-break-inside: avoid; }
+.inv-section > .inv-facts + .inv-facts { margin-top: 8px; }
+.inv-table-wrap { overflow-x: auto; }
+.inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.inv-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid #c9ced8;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  color: #5b6475;
+}
+.inv-table td { padding: 7px 8px; border-bottom: 1px solid #eceef2; vertical-align: top; }
+.inv-table tr { break-inside: avoid; }
+.inv-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.inv-extra { display: block; font-size: 12px; color: #5b6475; }
+.inv-totals { width: min(340px, 100%); margin: 14px 0 0 auto; font-variant-numeric: tabular-nums; }
+.inv-totals > div { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; }
+.inv-totals > .grand { margin-top: 4px; padding-top: 8px; border-top: 2px solid #1c2130; font-size: 16px; font-weight: 700; }
+.inv-totals > .grand + .grand { border-top: 0; margin-top: 0; padding-top: 2px; }
+.inv-payment + .inv-payment { margin-top: 12px; }
+.inv-payment-title { margin: 0 0 4px; font-weight: 600; }
+.inv-payment .inv-facts + .inv-facts { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #dde1e8; }
+.inv-attachment { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eceef2; }
+.inv-attachment > .icon { color: #2357d1; }
+.inv-attachment-main { flex: 1; min-width: 0; }
+.inv-attachment-main strong { display: block; overflow-wrap: anywhere; }
+.inv-attachment-main span { font-size: 12.5px; color: #5b6475; }
+.inv-attachment-actions { display: flex; gap: 6px; }
+.inv-attachment-actions .btn { min-height: 32px; padding: 0 10px; background: #fff; color: #1c2130; border-color: #dde1e8; }
+.inv-footnote { margin: 24px 0 0; font-size: 12px; color: #5b6475; }
+
 /* ------------------------------------------------------------ Schermi piccoli */
 
 @media (max-width: 760px) {
@@ -546,6 +655,8 @@ body.dragging .drop-overlay { display: grid; }
   #zoomSelect { max-width: 118px; }
   .sig-chip { max-width: 46vw; }
   .drop-card { padding: 28px 18px 20px; }
+  .inv-parties { grid-template-columns: 1fr; }
+  .inv-head h2, .inv-total strong { font-size: 19px; }
   .sheet { padding: 16px; }
   .sig-panel {
     top: auto;
@@ -589,13 +700,15 @@ body.dragging .drop-overlay { display: grid; }
     page-break-inside: avoid;
   }
   #printContainer > .printedPage:last-child { break-after: auto; page-break-after: auto; }
-  #printContainer img { display: block; max-width: 100%; max-height: 100%; }
+  #printContainer :is(img, canvas) { display: block; max-width: 100%; max-height: 100%; }
 
   body[data-print="alt"] > #main { display: block !important; position: static; background: none; }
   body[data-print="alt"] #main > :not(#altView) { display: none !important; }
   body[data-print="alt"] .alt-view { position: static; overflow: visible; padding: 0; }
   body[data-print="alt"] .sheet { max-width: none; padding: 0; box-shadow: none; }
-  body[data-print="alt"] .sheet-note, body[data-print="alt"] .message-card { display: none !important; }
+  body[data-print="alt"] .sheet-note, body[data-print="alt"] .message-card,
+  body[data-print="alt"] .view-tabs, body[data-print="alt"] .inv-attachment-actions { display: none !important; }
+  body[data-print="alt"] .inv-table-wrap { overflow: visible; }
   body[data-print="alt"] .image-view { max-height: 100vh; object-fit: contain; box-shadow: none; }
 
   body:not([data-print]) > #printNotice { display: block !important; padding: 2cm; font: 16px system-ui, sans-serif; }

@@ -1,6 +1,6 @@
 // Service worker: rende il lettore utilizzabile anche offline e riceve i file
 // condivisi da altre app (Android). Aggiornare VERSION a ogni modifica dei file.
-const VERSION = "2026-10-26.1";
+const VERSION = "2026-10-27.1";
 const CACHE = `lettore-pdf-${VERSION}`;
 const SHARED_CACHE = "lettore-pdf-condivisi";
 
@@ -8,14 +8,18 @@ const CORE = [
   "./",
   "app.js",
   "p7m.js",
+  "dom.js",
+  "viewer.js",
+  "fattura.js",
+  "print-encoder.js",
   "style.css",
   "manifest.webmanifest",
   "icons/icon.svg",
   "icons/icon-192.png",
   "lib/pdfjs/pdf.min.mjs",
   "lib/pdfjs/pdf.worker.min.mjs",
-  "lib/pdfjs/pdf_viewer.mjs",
-  "lib/pdfjs/pdf_viewer.css",
+  "lib/pdfjs/pdf_viewer.min.mjs",
+  "lib/pdfjs/pdf_viewer.min.css",
   "lib/pdfjs/images/loading-icon.gif",
   // Decodificatori delle immagini usate spesso nelle scansioni (JBIG2, JPEG 2000) e profili colore.
   "lib/pdfjs/wasm/jbig2.wasm",

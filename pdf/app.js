@@ -1,19 +1,15 @@
-import * as pdfjsLib from "./lib/pdfjs/pdf.min.mjs";
-import * as pdfjsViewer from "./lib/pdfjs/pdf_viewer.mjs";
 import { unwrap, sniff, innerFileName } from "./p7m.js";
+import { h, icon } from "./dom.js";
 
-const LIB = new URL("./lib/pdfjs/", import.meta.url).href;
-pdfjsLib.GlobalWorkerOptions.workerSrc = LIB + "pdf.worker.min.mjs";
-
-const PRINT_DPI = 150;
-const ZOOM_DELAY = 400;
 const SHARED_CACHE = "lettore-pdf-condivisi";
+const BUSY_DELAY = 200; // le aperture rapide non mostrano l'indicatore di attesa
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  toolbar: $("toolbar"),
+  appStyle: $("appStyle"),
   btnOpen: $("btnOpen"),
   btnOpenBig: $("btnOpenBig"),
+  btnBack: $("btnBack"),
   btnInstall: $("btnInstall"),
   fileInput: $("fileInput"),
   docTitle: $("docTitle"),
@@ -59,59 +55,53 @@ const els = {
   pageStyle: $("pageStyle"),
 };
 
-/* --------------------------------------------------------- Visualizzatore */
-
-const eventBus = new pdfjsViewer.EventBus();
-const linkService = new pdfjsViewer.PDFLinkService({
-  eventBus,
-  externalLinkTarget: pdfjsViewer.LinkTarget.BLANK,
-  externalLinkRel: "noopener noreferrer nofollow",
-});
-const findController = new pdfjsViewer.PDFFindController({ eventBus, linkService });
-const pdfViewer = new pdfjsViewer.PDFViewer({
-  container: els.viewerContainer,
-  viewer: els.viewer,
-  eventBus,
-  linkService,
-  findController,
-  imageResourcesPath: LIB + "images/",
-});
-linkService.setViewer(pdfViewer);
-
-/** Documento aperto: { name, data, type, layers, pdf, loadingTask, objectUrl } */
+/**
+ * Documento aperto:
+ * { name, sourceName, sourceBytes, data, type, layers, parent, pdf, loadingTask, usedPassword, objectUrl, printable }
+ */
 let doc = null;
 let openSeq = 0;
 let printJob = null;
-let printUrls = [];
+
+/* ------------------------------------------- Caricamento di PDF.js */
+
+let V = null; // modulo viewer.js, quando è pronto
+let viewerLoading = null;
+
+// Il worker di PDF.js (il file più grande) parte subito, in parallelo a PDF.js:
+// altrimenti verrebbe scaricato solo dopo, in sequenza.
+function startWorker() {
+  try {
+    return new Worker(new URL("lib/pdfjs/pdf.worker.min.mjs", import.meta.url), { type: "module", name: "lettore-pdf" });
+  } catch {
+    return null; // PDF.js ne crea uno da sé
+  }
+}
+
+function loadStylesheet(href) {
+  return new Promise((resolve, reject) => {
+    const link = h("link", { rel: "stylesheet", href });
+    link.onload = resolve;
+    link.onerror = () => reject(new Error(`impossibile caricare ${href}`));
+    // Prima del nostro foglio di stile, che deve poter sovrascrivere quello di PDF.js.
+    document.head.insertBefore(link, els.appStyle);
+  });
+}
+
+function loadViewer() {
+  if (!viewerLoading) {
+    const workerPort = startWorker();
+    viewerLoading = Promise.all([import("./viewer.js"), loadStylesheet("lib/pdfjs/pdf_viewer.min.css")]).then(([mod]) => {
+      mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, h, workerPort });
+      V = mod;
+      return mod;
+    });
+    viewerLoading.catch(() => (viewerLoading = null)); // si riprova alla prossima apertura
+  }
+  return viewerLoading;
+}
 
 /* ----------------------------------------------------------- Utilità UI */
-
-function h(tag, props, ...kids) {
-  const el = document.createElement(tag);
-  if (props) {
-    for (const [k, v] of Object.entries(props)) {
-      if (v == null || v === false) continue;
-      if (k === "class") el.className = v;
-      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-      else el.setAttribute(k, v === true ? "" : v);
-    }
-  }
-  for (const kid of kids.flat()) {
-    if (kid == null || kid === false) continue;
-    el.append(kid instanceof Node ? kid : String(kid));
-  }
-  return el;
-}
-
-function icon(name, cls = "icon") {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", cls);
-  svg.setAttribute("aria-hidden", "true");
-  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", "#i-" + name);
-  svg.append(use);
-  return svg;
-}
 
 let toastTimer = 0;
 function toast(message, kind = "info") {
@@ -123,15 +113,22 @@ function toast(message, kind = "info") {
 }
 els.toast.addEventListener("click", () => (els.toast.hidden = true));
 
-function busy(text, { progress = null, onCancel = null } = {}) {
-  els.busyText.textContent = text;
-  els.busyProgress.hidden = progress == null;
-  if (progress != null) els.busyBar.style.width = `${Math.round(progress * 100)}%`;
-  els.busyCancel.hidden = !onCancel;
-  els.busyCancel.onclick = onCancel;
-  els.busy.hidden = false;
+let busyTimer = 0;
+function busy(text, { progress = null, onCancel = null, delay = 0 } = {}) {
+  clearTimeout(busyTimer);
+  const show = () => {
+    els.busyText.textContent = text;
+    els.busyProgress.hidden = progress == null;
+    if (progress != null) els.busyBar.style.width = `${Math.round(progress * 100)}%`;
+    els.busyCancel.hidden = !onCancel;
+    els.busyCancel.onclick = onCancel;
+    els.busy.hidden = false;
+  };
+  if (delay) busyTimer = setTimeout(show, delay);
+  else show();
 }
 function idle() {
+  clearTimeout(busyTimer);
   els.busy.hidden = true;
 }
 
@@ -157,21 +154,33 @@ async function openFile(file) {
   await openBytes(bytes, file.name);
 }
 
-async function openBytes(bytes, name) {
+/**
+ * @param {Uint8Array} bytes contenuto del file
+ * @param {string} name nome del file
+ * @param {{ bytes: Uint8Array, name: string }} [parent] documento da cui proviene (allegato di una fattura)
+ */
+async function openBytes(bytes, name, parent = null) {
   const seq = ++openSeq;
-  busy("Apertura del documento…");
+  busy("Apertura del documento…", { delay: BUSY_DELAY });
   try {
-    const { data, fileName, layers } = await unwrap(bytes);
-    if (seq !== openSeq) return;
+    // L'estrazione dalla busta è immediata; la verifica delle firme prosegue in parallelo.
+    const { data, fileName, layers, verification } = unwrap(bytes);
     const type = sniff(data);
+    if (type.kind === "pdf") loadViewer().catch(() => {});
     await closeDocument();
-    doc = { name: innerFileName(fileName || name, type.ext), sourceName: name, data, type, layers };
-    els.docTitle.textContent = doc.name;
+    if (seq !== openSeq) return;
+    const current = (doc = {
+      name: innerFileName(fileName || name, type.ext), sourceName: name, sourceBytes: bytes, data, type, layers, parent,
+    });
+    els.docTitle.textContent = current.name;
     els.docTitle.title = name;
-    document.title = `${doc.name} – Lettore PDF e P7M`;
+    document.title = `${current.name} – Lettore PDF e P7M`;
     renderSignatures(layers);
+    verification.then(() => {
+      if (doc === current) renderSignatures(layers);
+    });
     if (type.kind === "pdf") await showPdf(seq);
-    else showOther();
+    else await showOther(seq);
   } catch (e) {
     if (seq !== openSeq) return;
     toast(e && e.message ? e.message : "Impossibile aprire il file.", "error");
@@ -184,53 +193,35 @@ async function openBytes(bytes, name) {
 async function closeDocument() {
   const old = doc;
   doc = null;
-  cancelPrint();
+  if (printJob) printJob.cancelled = true;
   clearPrint();
-  closeFind();
+  if (V) V.closeFind();
   els.sigPanel.hidden = true;
   els.sigChip.hidden = true;
   els.altView.replaceChildren();
   els.altView.hidden = true;
   if (!old) return;
   if (old.objectUrl) URL.revokeObjectURL(old.objectUrl);
-  if (old.loadingTask) {
-    pdfViewer.setDocument(null);
-    linkService.setDocument(null, null);
-    await old.loadingTask.destroy().catch(() => {});
-  }
-}
-
-function getDocumentParams(data) {
-  return {
-    data: data.slice(), // il buffer viene trasferito al worker: teniamo l'originale per il salvataggio
-    cMapUrl: LIB + "cmaps/",
-    cMapPacked: true,
-    standardFontDataUrl: LIB + "standard_fonts/",
-    wasmUrl: LIB + "wasm/",
-    iccUrl: LIB + "iccs/",
-    enableXfa: true,
-  };
+  if (old.loadingTask) await V.close(old.loadingTask);
 }
 
 async function showPdf(seq) {
+  let viewer;
+  try {
+    viewer = await loadViewer();
+  } catch {
+    if (seq !== openSeq) return;
+    showMessage("file", "Visualizzatore non disponibile",
+      "Non è stato possibile caricare il visualizzatore PDF: controlla la connessione e riprova. Intanto puoi salvare il documento.",
+      [downloadButton()]);
+    return;
+  }
+  if (seq !== openSeq) return;
   els.welcome.hidden = true;
   els.altView.hidden = true;
   els.viewerContainer.hidden = false;
-  const task = pdfjsLib.getDocument(getDocumentParams(doc.data));
+  const task = viewer.load(doc.data, askPassword);
   doc.loadingTask = task;
-  let passwordCancelled = false;
-  task.onPassword = (updatePassword, reason) => {
-    idle();
-    askPassword(reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD).then((pw) => {
-      if (pw === null) {
-        passwordCancelled = true;
-        task.destroy();
-      } else {
-        busy("Apertura del documento…");
-        updatePassword(pw);
-      }
-    });
-  };
   let pdf;
   try {
     pdf = await task.promise;
@@ -239,7 +230,7 @@ async function showPdf(seq) {
     els.viewerContainer.hidden = true;
     doc.loadingTask = null;
     task.destroy().catch(() => {});
-    if (passwordCancelled) {
+    if (task.passwordCancelled) {
       showMessage("lock", "Documento protetto da password", "Per visualizzarlo serve la password con cui è stato protetto.", [
         h("button", { class: "btn primary", type: "button", onclick: retryPdf }, "Inserisci la password"),
       ]);
@@ -255,8 +246,8 @@ async function showPdf(seq) {
     return;
   }
   doc.pdf = pdf;
-  pdfViewer.setDocument(pdf);
-  linkService.setDocument(pdf, null);
+  doc.usedPassword = !!task.usedPassword;
+  viewer.show(pdf);
   els.viewerContainer.focus({ preventScroll: true });
 }
 
@@ -264,7 +255,7 @@ async function showPdf(seq) {
 function retryPdf() {
   if (!doc) return;
   const seq = ++openSeq;
-  busy("Apertura del documento…");
+  busy("Apertura del documento…", { delay: BUSY_DELAY });
   showPdf(seq).finally(() => {
     if (seq === openSeq) idle();
     updateControls();
@@ -307,13 +298,19 @@ function decodeText(bytes, kind) {
   }
 }
 
-function formatXml(text) {
-  const parsed = new DOMParser().parseFromString(text, "application/xml");
-  if (parsed.getElementsByTagName("parsererror").length) return { text, root: null };
-  // Testo mostrato all'utente (non riletto come XML): i valori restano leggibili, senza entità.
+const LONG_TEXT = 4000;
+
+// XML indentato, mostrato come testo (non riletto come XML): i valori restano
+// leggibili, senza entità. I contenuti molto lunghi (allegati in Base64) sono abbreviati.
+function formatXml(parsed, source) {
   const attrs = (el) => Array.from(el.attributes, (a) => ` ${a.name}="${a.value}"`).join("");
+  const short = (s) => {
+    const t = s.trim();
+    if (t.length <= LONG_TEXT) return t;
+    return `${t.slice(0, 120)}… [altri ${(t.length - 120).toLocaleString("it-IT")} caratteri omessi]`;
+  };
   const lines = [];
-  const decl = /^﻿?\s*(<\?xml[^>]*\?>)/.exec(text);
+  const decl = /^﻿?\s*(<\?xml[^>]*\?>)/.exec(source);
   if (decl) lines.push(decl[1]);
   const walk = (node, depth) => {
     const pad = "  ".repeat(depth);
@@ -323,7 +320,7 @@ function formatXml(text) {
         const open = `<${node.nodeName}${attrs(node)}`;
         if (!kids.length) lines.push(`${pad}${open}/>`);
         else if (kids.length === 1 && kids[0].nodeType === Node.TEXT_NODE) {
-          lines.push(`${pad}${open}>${kids[0].nodeValue.trim()}</${node.nodeName}>`);
+          lines.push(`${pad}${open}>${short(kids[0].nodeValue)}</${node.nodeName}>`);
         } else {
           lines.push(`${pad}${open}>`);
           kids.forEach((k) => walk(k, depth + 1));
@@ -332,10 +329,10 @@ function formatXml(text) {
         break;
       }
       case Node.TEXT_NODE:
-        lines.push(pad + node.nodeValue.trim());
+        lines.push(pad + short(node.nodeValue));
         break;
       case Node.CDATA_SECTION_NODE:
-        lines.push(`${pad}<![CDATA[${node.nodeValue}]]>`);
+        lines.push(`${pad}<![CDATA[${short(node.nodeValue)}]]>`);
         break;
       case Node.PROCESSING_INSTRUCTION_NODE:
         lines.push(`${pad}<?${node.target} ${node.data}?>`);
@@ -346,36 +343,62 @@ function formatXml(text) {
     }
   };
   parsed.childNodes.forEach((n) => walk(n, 0));
-  return { text: lines.join("\n"), root: parsed.documentElement };
+  return lines.join("\n");
 }
 
-function showOther() {
+const textSheet = (text, prose = false) =>
+  h("div", { class: "sheet" }, h("pre", { class: "text-view" + (prose ? " prose" : "") }, text));
+
+async function showOther(seq) {
   els.welcome.hidden = true;
   els.viewerContainer.hidden = true;
   els.altView.hidden = false;
-  const { kind, mime } = doc.type;
-  if (kind === "xml" || kind === "text") {
-    const raw = decodeText(doc.data, kind);
-    let text = raw;
-    let note = null;
-    if (kind === "xml") {
-      const formatted = formatXml(raw);
-      text = formatted.text;
-      if (formatted.root && formatted.root.localName === "FatturaElettronica") {
-        note = "Fattura elettronica (FatturaPA) in formato XML. Il contenuto è mostrato così com'è, con i campi in chiaro.";
-      }
+  const current = doc;
+  const { kind, mime } = current.type;
+  if (kind === "text") {
+    els.altView.replaceChildren(textSheet(decodeText(current.data, kind), true));
+  } else if (kind === "xml") {
+    const source = decodeText(current.data, kind);
+    const parsed = new DOMParser().parseFromString(source, "application/xml");
+    const root = parsed.getElementsByTagName("parsererror").length ? null : parsed.documentElement;
+    if (!root) {
+      els.altView.replaceChildren(textSheet(source));
+    } else if (/^FatturaElettronica(Semplificata)?$/.test(root.localName)) {
+      const { renderFattura } = await import("./fattura.js");
+      if (seq !== openSeq) return;
+      showInvoice(current, root, parsed, source, renderFattura);
+    } else {
+      els.altView.replaceChildren(textSheet(formatXml(parsed, source)));
     }
-    const sheet = h("div", { class: "sheet" }, h("pre", { class: "text-view" + (kind === "text" ? " prose" : "") }, text));
-    els.altView.replaceChildren(...(note ? [h("div", { class: "sheet-note" }, note), sheet] : [sheet]));
   } else if (kind === "image") {
-    doc.objectUrl = URL.createObjectURL(new Blob([doc.data], { type: mime }));
-    const img = h("img", { class: "image-view", alt: doc.name });
+    current.objectUrl = URL.createObjectURL(new Blob([current.data], { type: mime }));
+    const img = h("img", { class: "image-view", alt: current.name });
     img.onerror = () => showBinary("Il browser non riesce a mostrare questa immagine.");
-    img.src = doc.objectUrl;
+    img.src = current.objectUrl;
     els.altView.replaceChildren(img);
   } else {
     showBinary();
   }
+}
+
+// Fattura elettronica: vista leggibile, con l'XML originale a portata di clic.
+function showInvoice(current, root, parsed, source, renderFattura) {
+  const invoice = h("div", { class: "sheet" }, renderFattura(root, {
+    open: (bytes, name) => openBytes(bytes, name, { bytes: current.sourceBytes, name: current.sourceName }),
+    save: (bytes, name) => saveBytes(bytes, name),
+  }));
+  let xml = null;
+  const tabs = h("div", { class: "view-tabs", role: "tablist" });
+  const select = (which) => {
+    if (which === "xml" && !xml) xml = textSheet(formatXml(parsed, source));
+    for (const t of tabs.children) t.setAttribute("aria-selected", String(t.dataset.view === which));
+    els.altView.replaceChildren(tabs, which === "xml" ? xml : invoice);
+    els.altView.scrollTop = 0;
+  };
+  tabs.append(
+    h("button", { class: "tab", type: "button", role: "tab", "data-view": "invoice", onclick: () => select("invoice") }, "Fattura"),
+    h("button", { class: "tab", type: "button", role: "tab", "data-view": "xml", onclick: () => select("xml") }, "XML originale"));
+  select("invoice");
 }
 
 function showBinary(reason) {
@@ -389,8 +412,10 @@ function showBinary(reason) {
 
 /* --------------------------------------------------------------- Firme */
 
-const STATUS_ICON = { valid: "shield-ok", invalid: "shield-bad", unknown: "shield-unknown" };
-const STATUS_LABEL = { valid: "Integra", invalid: "Non valida", unknown: "Non verificata" };
+const STATUS_ICON = { valid: "shield-ok", invalid: "shield-bad", unknown: "shield-unknown", pending: "shield-unknown" };
+const STATUS_LABEL = { valid: "Integra", invalid: "Non valida", unknown: "Non verificata", pending: "In verifica…" };
+
+const certProblem = (s) => s.certStatus === "expired" || s.certStatus === "notYetValid";
 
 function overallStatus(layers) {
   const signers = layers.flatMap((l) => l.signers || []);
@@ -398,13 +423,12 @@ function overallStatus(layers) {
   const all = [...signers, ...stamps];
   if (!all.length) return "unknown";
   if (all.some((x) => x.status === "invalid")) return "invalid";
+  if (all.some((x) => x.status === "pending")) return "pending";
   if (signers.some(certProblem)) return "unknown";
   if (signers.length && signers.every((s) => s.status === "valid")) return "valid";
   if (!signers.length && stamps.every((s) => s.status === "valid")) return "valid";
   return "unknown";
 }
-
-const certProblem = (s) => s.certStatus === "expired" || s.certStatus === "notYetValid";
 
 function renderSignatures(layers) {
   els.sigBody.replaceChildren();
@@ -415,12 +439,12 @@ function renderSignatures(layers) {
   const signers = layers.flatMap((l) => l.signers || []);
   const status = overallStatus(layers);
   const label = els.sigChip.querySelector(".sig-chip-label");
-  const use = els.sigChip.querySelector("use");
-  use.setAttribute("href", "#i-" + STATUS_ICON[status]);
+  els.sigChip.querySelector("use").setAttribute("href", "#i-" + STATUS_ICON[status]);
   els.sigChip.className = "sig-chip " + status;
-  let text;
   const certIssue = signers.some(certProblem);
+  let text;
   if (status === "invalid") text = "Firma non valida";
+  else if (status === "pending") text = signers.length ? "Verifica della firma…" : "Verifica della marca…";
   else if (certIssue) text = signers.some((s) => s.certStatus === "expired") ? "Certificato scaduto" : "Certificato non valido";
   else if (!signers.length) text = status === "valid" ? "Marca temporale" : "Marca non verificata";
   else if (status === "unknown") text = "Firma non verificata";
@@ -429,28 +453,28 @@ function renderSignatures(layers) {
   els.sigChip.title = "Mostra i dettagli delle firme";
   els.sigChip.hidden = false;
 
-  const summaryText = {
-    valid: signers.length
+  const summary = {
+    valid: ["Verifica superata", signers.length
       ? "Le firme sono integre: il documento non è stato modificato dopo la firma."
-      : "La marca temporale è integra e riferita a questo documento.",
-    invalid: "Almeno una firma o marca temporale non è valida: il documento potrebbe essere stato alterato.",
-    unknown: certIssue
+      : "La marca temporale è integra e riferita a questo documento."],
+    invalid: ["Attenzione", "Almeno una firma o marca temporale non è valida: il documento potrebbe essere stato alterato."],
+    pending: ["Verifica in corso", "Controllo dell'integrità di firme e marche temporali…"],
+    unknown: ["Verifica incompleta", certIssue
       ? "Il documento non è stato modificato, ma il certificato di almeno un firmatario non risulta valido alla data della firma."
-      : "Non è stato possibile verificare tutte le firme. I dati dei firmatari sono comunque mostrati qui sotto.",
+      : "Non è stato possibile verificare tutte le firme. I dati dei firmatari sono comunque mostrati qui sotto."],
   }[status];
   els.sigBody.append(
     h("div", { class: "summary " + status }, icon(STATUS_ICON[status]),
-      h("div", null, h("h3", null, { valid: "Verifica superata", invalid: "Attenzione", unknown: "Verifica incompleta" }[status]),
-        h("p", null, summaryText)))
+      h("div", null, h("h3", null, summary[0]), h("p", null, summary[1])))
   );
 
+  const envelopes = layers.filter((l) => l.type === "p7m").length;
   let envelope = 0;
   for (const layer of layers) {
     if (layer.type === "p7m") {
       envelope++;
-      const count = layers.filter((l) => l.type === "p7m").length;
       els.sigBody.append(h("h3", { class: "layer-title" },
-        count > 1 ? `Busta firmata ${envelope} di ${count} (CAdES .p7m)` : "Firma digitale (CAdES .p7m)"));
+        envelopes > 1 ? `Busta firmata ${envelope} di ${envelopes} (CAdES .p7m)` : "Firma digitale (CAdES .p7m)"));
       if (!layer.signers.length) els.sigBody.append(h("p", { class: "signer-msg" }, "La busta non contiene firme."));
       for (const s of layer.signers) els.sigBody.append(renderSigner(s));
     } else {
@@ -480,6 +504,8 @@ function taxCode(cert) {
   return { label: "Identificativo", value: sn };
 }
 
+const statusClass = (status) => ({ valid: "ok", invalid: "bad", unknown: "warn" })[status] || null;
+
 function renderSigner(s) {
   const facts = [];
   const add = (label, value, cls) => {
@@ -496,8 +522,7 @@ function renderSigner(s) {
   }
   if (s.signingTime) add("Data firma", `${fmtDateTime(s.signingTime)} (dichiarata dal firmatario)`);
   for (const ts of s.timestamps) {
-    add("Marca temporale", `${fmtDateTime(ts.time)}${ts.tsa ? ` · ${ts.tsa}` : ""} — ${STATUS_LABEL[ts.status].toLowerCase()}`,
-      ts.status === "valid" ? "ok" : ts.status === "invalid" ? "bad" : "warn");
+    add("Marca temporale", `${fmtDateTime(ts.time)}${ts.tsa ? ` · ${ts.tsa}` : ""} — ${STATUS_LABEL[ts.status].toLowerCase()}`, statusClass(ts.status));
   }
   if (cert) {
     const kinds = [];
@@ -577,165 +602,19 @@ function askPassword(wrong) {
   });
 }
 
-/* --------------------------------------------------- Pagine e zoom */
-
-eventBus.on("pagesinit", () => {
-  pdfViewer.currentScaleValue = window.matchMedia("(max-width: 760px)").matches ? "page-width" : "auto";
-  els.pageCount.textContent = `/ ${pdfViewer.pagesCount}`;
-  els.pageNumber.max = pdfViewer.pagesCount;
-  updatePageControls(pdfViewer.currentPageNumber);
-});
-eventBus.on("pagechanging", ({ pageNumber }) => updatePageControls(pageNumber));
-eventBus.on("scalechanging", ({ scale, presetValue }) => updateZoomControls(scale, presetValue));
-
-function updatePageControls(page) {
-  els.pageNumber.value = page;
-  els.btnPrev.disabled = page <= 1;
-  els.btnNext.disabled = page >= pdfViewer.pagesCount;
-}
-
-function updateZoomControls(scale, preset) {
-  const opts = Array.from(els.zoomSelect.options);
-  const match = preset
-    ? opts.find((o) => o.value === preset)
-    : opts.find((o) => o.value !== "custom" && Math.abs(parseFloat(o.value) - scale) < 1e-3);
-  if (match) {
-    els.zoomCustom.hidden = true;
-    els.zoomSelect.value = match.value;
-  } else {
-    els.zoomCustom.textContent = `${Math.round(scale * 100)}%`;
-    els.zoomCustom.hidden = false;
-    els.zoomSelect.value = "custom";
-  }
-}
-
-els.pageNumber.addEventListener("change", () => {
-  const n = Math.min(Math.max(1, parseInt(els.pageNumber.value, 10) || 1), pdfViewer.pagesCount);
-  pdfViewer.currentPageNumber = n;
-  els.pageNumber.value = n;
-});
-els.pageNumber.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") els.pageNumber.dispatchEvent(new Event("change"));
-});
-els.btnPrev.addEventListener("click", () => pdfViewer.previousPage());
-els.btnNext.addEventListener("click", () => pdfViewer.nextPage());
-els.btnZoomIn.addEventListener("click", () => pdfViewer.increaseScale());
-els.btnZoomOut.addEventListener("click", () => pdfViewer.decreaseScale());
-els.zoomSelect.addEventListener("change", () => {
-  if (els.zoomSelect.value !== "custom") pdfViewer.currentScaleValue = els.zoomSelect.value;
-});
-els.btnRotate.addEventListener("click", () => {
-  pdfViewer.pagesRotation = (pdfViewer.pagesRotation + 90) % 360;
-});
-
-// Zoom con Ctrl + rotellina (e pinch sul touchpad).
-let wheelUnusedFactor = 1;
-let touchUnusedFactor = 1;
-function accumulateFactor(previousScale, factor, unused) {
-  if (factor === 1) return [1, unused];
-  if ((unused > 1 && factor < 1) || (unused < 1 && factor > 1)) unused = 1;
-  const newFactor = Math.floor(previousScale * factor * unused * 100) / (100 * previousScale);
-  return [newFactor, factor / newFactor];
-}
-els.viewerContainer.addEventListener("wheel", (e) => {
-  if (!(e.ctrlKey || e.metaKey) || !doc || !doc.pdf) return;
-  e.preventDefault();
-  const origin = [e.clientX, e.clientY];
-  if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(e.deltaY) < 30) {
-    let factor;
-    [factor, wheelUnusedFactor] = accumulateFactor(pdfViewer.currentScale, Math.exp(-e.deltaY / 100), wheelUnusedFactor);
-    pdfViewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: factor, origin });
-  } else if (e.deltaY) {
-    pdfViewer.updateScale({ drawingDelay: ZOOM_DELAY, steps: e.deltaY < 0 ? 1 : -1, origin });
-  }
-}, { passive: false });
-
-// Pinch-to-zoom sui dispositivi touch.
-new pdfjsLib.TouchManager({
-  container: els.viewerContainer,
-  isPinchingDisabled: () => !doc || !doc.pdf,
-  onPinching: (origin, prevDistance, distance, dx, dy) => {
-    let factor;
-    [factor, touchUnusedFactor] = accumulateFactor(pdfViewer.currentScale, distance / prevDistance, touchUnusedFactor);
-    pdfViewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: factor, origin, pan: [dx, dy] });
-  },
-  onPanning: (dx, dy) => pdfViewer.panBy(dx, dy),
-  onPinchEnd: () => {
-    touchUnusedFactor = 1;
-  },
-  signal: new AbortController().signal,
-});
-
-/* ------------------------------------------------------------ Ricerca */
-
-function openFind() {
-  if (!doc || !doc.pdf) return;
-  els.findbar.hidden = false;
-  els.btnFind.setAttribute("aria-expanded", "true");
-  els.findInput.focus();
-  els.findInput.select();
-}
-
-function closeFind() {
-  if (els.findbar.hidden) return;
-  els.findbar.hidden = true;
-  els.btnFind.setAttribute("aria-expanded", "false");
-  els.findResult.textContent = "";
-  eventBus.dispatch("findbarclose", { source: null });
-}
-
-function dispatchFind(type, findPrevious = false) {
-  eventBus.dispatch("find", {
-    source: null,
-    type,
-    query: els.findInput.value,
-    caseSensitive: false,
-    entireWord: false,
-    highlightAll: true,
-    findPrevious,
-    matchDiacritics: false,
-  });
-}
-
-function showFindResult(state, matches) {
-  const { FindState } = pdfjsViewer;
-  els.findResult.classList.toggle("not-found", state === FindState.NOT_FOUND);
-  if (!els.findInput.value) els.findResult.textContent = "";
-  else if (state === FindState.NOT_FOUND) els.findResult.textContent = "Nessun risultato";
-  else if (state === FindState.PENDING) els.findResult.textContent = "Ricerca…";
-  else if (matches && matches.total) els.findResult.textContent = `${matches.current} di ${matches.total}`;
-}
-
-eventBus.on("updatefindcontrolstate", ({ state, matchesCount }) => showFindResult(state, matchesCount));
-eventBus.on("updatefindmatchescount", ({ matchesCount }) => showFindResult(pdfjsViewer.FindState.FOUND, matchesCount));
-
-els.btnFind.addEventListener("click", () => (els.findbar.hidden ? openFind() : closeFind()));
-els.findInput.addEventListener("input", () => dispatchFind(""));
-els.findInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    dispatchFind("again", e.shiftKey);
-  } else if (e.key === "Escape") {
-    e.preventDefault();
-    closeFind();
-  }
-});
-els.findNext.addEventListener("click", () => dispatchFind("again", false));
-els.findPrev.addEventListener("click", () => dispatchFind("again", true));
-els.findClose.addEventListener("click", closeFind);
-
 /* ------------------------------------------------------------- Stampa */
 
 function clearPrint() {
-  for (const url of printUrls) URL.revokeObjectURL(url);
-  printUrls = [];
-  els.printContainer.replaceChildren();
+  if (V) V.clearPrint();
   delete document.body.dataset.print;
   els.pageStyle.textContent = "";
 }
 
-function cancelPrint() {
-  if (printJob) printJob.cancelled = true;
+function printAltView() {
+  clearPrint();
+  els.pageStyle.textContent = "@page { margin: 15mm; }";
+  document.body.dataset.print = "alt";
+  window.print();
 }
 
 async function printDocument() {
@@ -745,57 +624,16 @@ async function printDocument() {
     return;
   }
   if (!doc.pdf) {
-    clearPrint();
-    els.pageStyle.textContent = "@page { margin: 15mm; }";
-    document.body.dataset.print = "alt";
-    window.print();
+    printAltView();
     return;
   }
-  const job = (printJob = { cancelled: false });
-  const pdf = doc.pdf;
+  const job = (printJob = { cancelled: false, usedPassword: doc.usedPassword });
+  const current = doc;
   clearPrint();
   try {
-    const rotation = pdfViewer.pagesRotation;
-    const first = await pdf.getPage(1);
-    const base = first.getViewport({ scale: 1, rotation: (first.rotate + rotation) % 360 });
-    const landscape = base.width > base.height;
-    // Il formato carta segue la prima pagina; le altre vengono ruotate se serve.
-    els.pageStyle.textContent = `@page { size: ${base.width}pt ${base.height}pt; margin: 0; }`;
-    const total = pdf.numPages;
-    for (let i = 1; i <= total; i++) {
-      if (job.cancelled) throw new DOMException("Stampa annullata", "AbortError");
-      busy(`Preparazione della stampa… pagina ${i} di ${total}`, { progress: (i - 1) / total, onCancel: cancelPrint });
-      const page = i === 1 ? first : await pdf.getPage(i);
-      let rot = (page.rotate + rotation) % 360;
-      const natural = page.getViewport({ scale: 1, rotation: rot });
-      if (natural.width > natural.height !== landscape && natural.width !== natural.height) rot = (rot + 90) % 360;
-      const viewport = page.getViewport({ scale: PRINT_DPI / 72, rotation: rot });
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      await page.render({
-        canvas,
-        viewport,
-        intent: "print",
-        annotationMode: pdfjsLib.AnnotationMode.ENABLE_STORAGE,
-        printAnnotationStorage: pdf.annotationStorage.print,
-      }).promise;
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve));
-      canvas.width = canvas.height = 0;
-      if (!blob) throw new Error("memoria insufficiente per preparare la pagina");
-      const url = URL.createObjectURL(blob);
-      printUrls.push(url);
-      const img = h("img", { src: url, alt: `Pagina ${i}` });
-      els.printContainer.append(h("div", { class: "printedPage" }, img));
-      page.cleanup();
-    }
-    busy("Invio alla stampante…", { progress: 1 });
-    await Promise.all(Array.from(els.printContainer.querySelectorAll("img"), (img) => img.decode().catch(() => {})));
-    if (job.cancelled || doc === null || doc.pdf !== pdf) throw new DOMException("Stampa annullata", "AbortError");
-    document.body.dataset.print = "pdf";
-    idle();
-    window.print();
+    await V.print(current.pdf, current.data, job);
   } catch (e) {
+    job.cancelled = true;
     clearPrint();
     if (!(e && e.name === "AbortError")) {
       console.error(e);
@@ -818,6 +656,15 @@ window.addEventListener("beforeprint", () => {
 
 /* ---------------------------------------------------------- Salvataggio */
 
+function saveBytes(data, name, mime = "application/octet-stream") {
+  const url = URL.createObjectURL(new Blob([data], { type: mime }));
+  const a = h("a", { href: url, download: name, rel: "noopener" });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 async function downloadDocument() {
   if (!doc) return;
   let data = doc.data;
@@ -827,12 +674,7 @@ async function downloadDocument() {
   } catch (e) {
     console.warn(e);
   }
-  const url = URL.createObjectURL(new Blob([data], { type: doc.type.mime }));
-  const a = h("a", { href: url, download: doc.name, rel: "noopener" });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  saveBytes(data, doc.name, doc.type.mime);
 }
 
 /* ------------------------------------------------------- Stato comandi */
@@ -847,6 +689,8 @@ function updateControls() {
     els.docTitle.textContent = "";
     document.title = "Lettore PDF e P7M";
   }
+  els.btnBack.hidden = !(hasDoc && doc.parent);
+  if (hasDoc && doc.parent) els.btnBack.title = `Torna a ${doc.parent.name}`;
   els.viewControls.hidden = !isPdf;
   els.btnDownload.disabled = !hasDoc;
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
@@ -861,6 +705,9 @@ els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files && els.fileInput.files[0];
   els.fileInput.value = "";
   openFile(file);
+});
+els.btnBack.addEventListener("click", () => {
+  if (doc && doc.parent) openBytes(doc.parent.bytes, doc.parent.name);
 });
 els.btnDownload.addEventListener("click", downloadDocument);
 els.btnPrint.addEventListener("click", printDocument);
@@ -913,19 +760,19 @@ window.addEventListener("keydown", (e) => {
     downloadDocument();
   } else if (mod && key === "f" && isPdf) {
     e.preventDefault();
-    openFind();
+    V.openFind();
   } else if (mod && (key === "+" || key === "=") && isPdf) {
     e.preventDefault();
-    pdfViewer.increaseScale();
+    V.zoomIn();
   } else if (mod && key === "-" && isPdf) {
     e.preventDefault();
-    pdfViewer.decreaseScale();
+    V.zoomOut();
   } else if (mod && key === "0" && isPdf) {
     e.preventDefault();
-    pdfViewer.currentScaleValue = "auto";
+    V.zoomReset();
   } else if (e.key === "Escape") {
     if (!els.sigPanel.hidden) toggleSigPanel(false);
-    else closeFind();
+    else if (V) V.closeFind();
   }
 });
 
@@ -977,3 +824,7 @@ async function openSharedFile() {
 
 updateControls();
 openSharedFile();
+
+// PDF.js e il suo worker si caricano subito in background, mentre l'utente sceglie
+// il file (con il risparmio dati attivo, invece, solo quando servono).
+if (!(navigator.connection && navigator.connection.saveData)) loadViewer().catch(() => {});

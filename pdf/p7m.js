@@ -545,6 +545,16 @@ async function verifyRawSignature(signer, cert, hash, signedBytes) {
 
 class Unverifiable extends Error {}
 
+// Impronte già calcolate: con più firme sullo stesso contenuto si calcolano una volta sola.
+const digestCache = new WeakMap();
+function digest(hash, bytes) {
+  let byHash = digestCache.get(bytes);
+  if (!byHash) digestCache.set(bytes, (byHash = new Map()));
+  let result = byHash.get(hash);
+  if (!result) byHash.set(hash, (result = crypto.subtle.digest(hash, bytes).then((d) => new Uint8Array(d))));
+  return result;
+}
+
 // Esito: { status: "valid" | "invalid" | "unknown", message }
 async function verifySigner(signer, cert, data) {
   if (!cert) return { status: "unknown", message: "Il certificato del firmatario non è incluso nel file." };
@@ -557,8 +567,7 @@ async function verifySigner(signer, cert, data) {
     let signedBytes = data;
     if (signer.signedAttrsNode) {
       if (!signer.messageDigest) return { status: "invalid", message: "Manca l'impronta del documento negli attributi firmati." };
-      const digest = new Uint8Array(await crypto.subtle.digest(hash, data));
-      if (!equalBytes(digest, signer.messageDigest)) {
+      if (!equalBytes(await digest(hash, data), signer.messageDigest)) {
         return { status: "invalid", message: "L'impronta non corrisponde: il documento è stato modificato dopo la firma." };
       }
       if (signer.signedAttrsNode.indef) throw new Unverifiable("attributi firmati non in formato DER");
@@ -585,8 +594,7 @@ async function verifyTimestamp(ts, stamped) {
   }
   let matches = false;
   for (const bytes of Array.isArray(stamped) ? stamped : [stamped]) {
-    const digest = new Uint8Array(await crypto.subtle.digest(ts.imprintHash, bytes));
-    if (equalBytes(digest, ts.imprint)) matches = true;
+    if (equalBytes(await digest(ts.imprintHash, bytes), ts.imprint)) matches = true;
   }
   if (!matches) {
     return { status: "invalid", message: "La marca temporale non si riferisce a questo contenuto." };
@@ -610,13 +618,26 @@ export function displayName(name) {
   return name.text;
 }
 
-async function describeSigner(signer, sd) {
+const PENDING = { status: "pending", message: "Verifica in corso…" };
+
+// Esegue una verifica e ne copia l'esito in `target` (che inizialmente è "pending").
+function settle(target, verification) {
+  return verification
+    .catch((e) => ({ status: "unknown", message: `Impossibile verificare: ${(e && e.message) || e}.` }))
+    .then((result) => Object.assign(target, result));
+}
+
+function describeTimestamp(ts, stamped, jobs) {
+  const info = { time: ts.time, tsa: ts.tsa, ...PENDING };
+  jobs.push(settle(info, verifyTimestamp(ts, stamped)));
+  return info;
+}
+
+// I dati del firmatario sono subito disponibili; l'esito delle verifiche
+// crittografiche arriva dopo, tramite le promesse aggiunte a `jobs`.
+function describeSigner(signer, sd, jobs) {
   const cert = findCert(signer.sid, sd.certs);
-  const result = await verifySigner(signer, cert, sd.data);
-  const timestamps = [];
-  for (const ts of signer.timestamps) {
-    timestamps.push({ time: ts.time, tsa: ts.tsa, ...(await verifyTimestamp(ts, signer.signature)) });
-  }
+  const timestamps = signer.timestamps.map((ts) => describeTimestamp(ts, signer.signature, jobs));
   // Riferimento temporale: marca temporale se presente, altrimenti data dichiarata.
   const refTime = (timestamps[0] && timestamps[0].time) || signer.signingTime || null;
   let certStatus = null;
@@ -626,7 +647,7 @@ async function describeSigner(signer, sd) {
     else if (t > cert.notAfter) certStatus = "expired";
     else certStatus = "valid";
   }
-  return {
+  const info = {
     name: cert ? displayName(cert.subject) : "Firmatario sconosciuto",
     cert,
     signingTime: signer.signingTime,
@@ -637,8 +658,10 @@ async function describeSigner(signer, sd) {
     qscd: !!cert && cert.qcStatements.includes(OID.qcSSCD),
     certStatus,
     certCheckedAt: refTime,
-    ...result,
+    ...PENDING,
   };
+  jobs.push(settle(info, verifySigner(signer, cert, sd.data)));
+  return info;
 }
 
 /* --------------------------------------------------- Rilevamento buste */
@@ -691,10 +714,13 @@ function detectEnvelope(bytes) {
 
 /**
  * Estrae il documento contenuto in una o più buste (p7m annidati, tsd, m7m).
- * @returns {Promise<{data: Uint8Array, fileName: string|null, layers: object[]}>}
+ * L'estrazione è immediata; le verifiche crittografiche proseguono in parallelo
+ * e aggiornano `layers` quando `verification` si risolve.
+ * @returns {{data: Uint8Array, fileName: string|null, layers: object[], verification: Promise<object[]>}}
  */
-export async function unwrap(bytes) {
+export function unwrap(bytes) {
   const layers = [];
+  const jobs = [];
   let data = bytes;
   let fileName = null;
   for (let depth = 0; depth < MAX_LAYERS; depth++) {
@@ -721,9 +747,7 @@ export async function unwrap(bytes) {
         else if (ci) doc = doc || part.bytes;
       }
       if (!doc) throw new Error("Il file .m7m non contiene un documento firmato leggibile.");
-      const timestamps = [];
-      for (const ts of stamps) timestamps.push({ time: ts.time, tsa: ts.tsa, ...(await verifyTimestamp(ts, doc)) });
-      layers.push({ type: "m7m", timestamps });
+      layers.push({ type: "m7m", timestamps: stamps.map((ts) => describeTimestamp(ts, doc, jobs)) });
       data = doc;
       continue;
     }
@@ -738,8 +762,7 @@ export async function unwrap(bytes) {
     if (ci.type === OID.timeStampedData) {
       const tsd = parseTimeStampedData(ci.body);
       if (!tsd.data) throw new Error("Il file .tsd non include il documento (contenuto separato).");
-      const timestamps = [];
-      for (const ts of tsd.timestamps) timestamps.push({ time: ts.time, tsa: ts.tsa, ...(await verifyTimestamp(ts, tsd.stamped)) });
+      const timestamps = tsd.timestamps.map((ts) => describeTimestamp(ts, tsd.stamped, jobs));
       layers.push({ type: "tsd", timestamps, fileName: tsd.fileName });
       if (tsd.fileName) fileName = tsd.fileName;
       data = tsd.data;
@@ -754,12 +777,10 @@ export async function unwrap(bytes) {
           "serve anche il file originale firmato."
       );
     }
-    const signers = [];
-    for (const s of sd.signers) signers.push(await describeSigner(s, sd));
-    layers.push({ type: "p7m", signers });
+    layers.push({ type: "p7m", signers: sd.signers.map((signer) => describeSigner(signer, sd, jobs)) });
     data = sd.data;
   }
-  return { data, fileName, layers };
+  return { data, fileName, layers, verification: Promise.all(jobs).then(() => layers) };
 }
 
 /* ------------------------------------------------ Tipo del contenuto */
