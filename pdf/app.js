@@ -9,6 +9,8 @@ const els = {
   appStyle: $("appStyle"),
   btnOpen: $("btnOpen"),
   btnOpenBig: $("btnOpenBig"),
+  btnWindow: $("btnWindow"),
+  dropCard: $("dropCard"),
   btnBack: $("btnBack"),
   btnInstall: $("btnInstall"),
   fileInput: $("fileInput"),
@@ -26,6 +28,8 @@ const els = {
   btnRotate: $("btnRotate"),
   btnFind: $("btnFind"),
   btnDownload: $("btnDownload"),
+  btnShare: $("btnShare"),
+  shareMenu: $("shareMenu"),
   btnPrint: $("btnPrint"),
   findbar: $("findbar"),
   findInput: $("findInput"),
@@ -62,6 +66,10 @@ const els = {
 let doc = null;
 let openSeq = 0;
 let printJob = null;
+
+// Aperto da Outlook come componente aggiuntivo (vedi outlook/manifest.xml).
+const OUTLOOK = new URLSearchParams(location.search).has("outlook");
+let outlookActive = false;
 
 /* ------------------------------------------- Caricamento di PDF.js */
 
@@ -190,11 +198,20 @@ async function openBytes(bytes, name, parent = null) {
   }
 }
 
+// Torna alla schermata iniziale (in Outlook: l'elenco degli allegati).
+async function showHome() {
+  ++openSeq;
+  idle();
+  await closeDocument();
+  updateControls();
+}
+
 async function closeDocument() {
   const old = doc;
   doc = null;
   if (printJob) printJob.cancelled = true;
   clearPrint();
+  closeShareMenu();
   if (V) V.closeFind();
   els.sigPanel.hidden = true;
   els.sigChip.hidden = true;
@@ -665,16 +682,103 @@ function saveBytes(data, name, mime = "application/octet-stream") {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+// Contenuto del documento estratto; se l'utente ha compilato dei moduli, include i valori inseriti.
+async function documentBytes() {
+  if (doc.pdf && doc.pdf.annotationStorage.size > 0) {
+    try {
+      return await doc.pdf.saveDocument();
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+  return doc.data;
+}
+
 async function downloadDocument() {
   if (!doc) return;
-  let data = doc.data;
+  const current = doc;
+  const data = await documentBytes();
+  saveBytes(data, current.name, current.type.mime);
+}
+
+/* --------------------------------------------------------- Condivisione */
+
+const ENVELOPE_MIME = { p7m: "application/pkcs7-mime", p7s: "application/pkcs7-signature", tsd: "application/timestamped-data" };
+
+function canShareFile(file) {
   try {
-    // Se l'utente ha compilato dei moduli, salviamo anche i valori inseriti.
-    if (doc.pdf && doc.pdf.annotationStorage.size > 0) data = await doc.pdf.saveDocument();
-  } catch (e) {
-    console.warn(e);
+    return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+  } catch {
+    return false;
   }
-  saveBytes(data, doc.name, doc.type.mime);
+}
+
+async function shareFile(file) {
+  try {
+    await navigator.share({ files: [file], title: file.name });
+  } catch (e) {
+    if (e.name === "AbortError") return; // condivisione annullata dall'utente
+    if (e.name === "NotAllowedError") toast("Premi di nuovo «Condividi» per completare la condivisione.");
+    else toast(`Condivisione non riuscita: ${e.message || e}`, "error");
+  }
+}
+
+// Senza documento aperto si condivide il link al lettore.
+async function shareApp() {
+  const url = new URL("./", location.href).href;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Lettore PDF e P7M", text: "Lettore gratuito di PDF e file firmati .p7m, funziona nel browser:", url });
+      return;
+    } catch (e) {
+      if (e.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Link al lettore copiato negli appunti.");
+  } catch {
+    toast(url);
+  }
+}
+
+function closeShareMenu() {
+  els.shareMenu.hidden = true;
+  els.btnShare.setAttribute("aria-expanded", "false");
+}
+
+async function shareDocument() {
+  if (!els.shareMenu.hidden) return closeShareMenu();
+  if (!doc) return shareApp();
+  const current = doc;
+  const options = [];
+  const extracted = new File([await documentBytes()], current.name, { type: current.type.mime });
+  if (canShareFile(extracted)) {
+    options.push({ title: current.layers.length ? "Documento estratto" : "Documento", file: extracted });
+  }
+  if (current.layers.length) {
+    // Il file firmato originale conserva il valore legale della firma.
+    const ext = (/\.([a-z0-9]+)$/i.exec(current.sourceName) || [])[1] || "";
+    const original = new File([current.sourceBytes], current.sourceName, {
+      type: ENVELOPE_MIME[ext.toLowerCase()] || "application/octet-stream",
+    });
+    if (canShareFile(original)) options.push({ title: "File firmato originale", file: original });
+  }
+  if (!options.length) {
+    // Browser senza condivisione di file (o tipo di file non ammesso): si salva il file.
+    saveBytes(extracted, current.name, current.type.mime);
+    toast("Questo browser non permette di condividere questo file: l'ho salvato, così puoi allegarlo a un'email o a un messaggio.");
+    return;
+  }
+  if (options.length === 1) return shareFile(options[0].file);
+  els.shareMenu.replaceChildren(...options.map((o) =>
+    h("button", { class: "share-option", type: "button", role: "menuitem", onclick: () => {
+      closeShareMenu();
+      shareFile(o.file);
+    } }, h("strong", null, o.title), h("span", null, o.file.name))));
+  els.shareMenu.hidden = false;
+  els.btnShare.setAttribute("aria-expanded", "true");
+  els.shareMenu.querySelector("button").focus();
 }
 
 /* ------------------------------------------------------- Stato comandi */
@@ -693,13 +797,14 @@ function updateControls() {
   if (hasDoc && doc.parent) els.btnBack.title = `Torna a ${doc.parent.name}`;
   els.viewControls.hidden = !isPdf;
   els.btnDownload.disabled = !hasDoc;
+  els.btnShare.title = hasDoc ? "Condividi il documento" : "Condividi il lettore";
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
 }
 
 /* ------------------------------------------------------------ Eventi */
 
 const pickFile = () => els.fileInput.click();
-els.btnOpen.addEventListener("click", pickFile);
+els.btnOpen.addEventListener("click", () => (outlookActive ? showHome() : pickFile()));
 els.btnOpenBig.addEventListener("click", pickFile);
 els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files && els.fileInput.files[0];
@@ -710,6 +815,10 @@ els.btnBack.addEventListener("click", () => {
   if (doc && doc.parent) openBytes(doc.parent.bytes, doc.parent.name);
 });
 els.btnDownload.addEventListener("click", downloadDocument);
+els.btnShare.addEventListener("click", shareDocument);
+document.addEventListener("pointerdown", (e) => {
+  if (!els.shareMenu.hidden && !e.target.closest(".share-wrap")) closeShareMenu();
+});
 els.btnPrint.addEventListener("click", printDocument);
 els.sigChip.addEventListener("click", () => toggleSigPanel());
 els.sigClose.addEventListener("click", () => toggleSigPanel(false));
@@ -771,7 +880,8 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     V.zoomReset();
   } else if (e.key === "Escape") {
-    if (!els.sigPanel.hidden) toggleSigPanel(false);
+    if (!els.shareMenu.hidden) closeShareMenu();
+    else if (!els.sigPanel.hidden) toggleSigPanel(false);
     else if (V) V.closeFind();
   }
 });
@@ -793,7 +903,8 @@ els.btnInstall.addEventListener("click", async () => {
 });
 window.addEventListener("appinstalled", () => (els.btnInstall.hidden = true));
 
-if ("serviceWorker" in navigator && window.isSecureContext) {
+// Dentro Outlook niente service worker: il componente aggiuntivo carica sempre l'ultima versione.
+if ("serviceWorker" in navigator && window.isSecureContext && !OUTLOOK) {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("Service worker non registrato:", e));
 }
 
@@ -822,8 +933,33 @@ async function openSharedFile() {
   }
 }
 
+// Documento passato da un'altra finestra del lettore (pulsante "Apri in una finestra" di Outlook).
+function receiveFromOpener() {
+  if (!new URLSearchParams(location.search).has("ricevi") || !window.opener) return;
+  history.replaceState(null, "", location.pathname);
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.opener || e.origin !== location.origin || !e.data || e.data.type !== "lettore-file") return;
+    openBytes(new Uint8Array(e.data.bytes.buffer || e.data.bytes), e.data.name);
+  });
+  window.opener.postMessage({ type: "lettore-pronto" }, location.origin);
+}
+
 updateControls();
 openSharedFile();
+receiveFromOpener();
+
+if (OUTLOOK) {
+  import("./outlook.js")
+    .then((m) => m.start({
+      els, openBytes, showHome, pickFile, toast, busy, idle,
+      currentFile: () => (doc ? { bytes: doc.sourceBytes, name: doc.sourceName } : null),
+    }))
+    .then((active) => {
+      outlookActive = active;
+      updateControls();
+    })
+    .catch((e) => console.warn("Modalità Outlook non disponibile:", e));
+}
 
 // PDF.js e il suo worker si caricano subito in background, mentre l'utente sceglie
 // il file (con il risparmio dati attivo, invece, solo quando servono).

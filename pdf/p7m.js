@@ -215,7 +215,7 @@ function concat(parts) {
   return out;
 }
 
-function bytesToLatin1(b) {
+export function bytesToLatin1(b) {
   let s = "";
   for (let i = 0; i < b.length; i += 0x8000) {
     s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
@@ -223,13 +223,13 @@ function bytesToLatin1(b) {
   return s;
 }
 
-function latin1ToBytes(s) {
+export function latin1ToBytes(s) {
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
   return out;
 }
 
-function base64ToBytes(s) {
+export function base64ToBytes(s) {
   return latin1ToBytes(atob(s.replace(/[^A-Za-z0-9+/=]/g, "")));
 }
 

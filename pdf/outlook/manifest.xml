@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Componente aggiuntivo di Outlook per il Lettore PDF e P7M.
+     Istruzioni di installazione: https://adecordi.github.io/pdf/outlook/ -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+           xsi:type="MailApp">
+  <Id>829f2caa-0a4f-4a1c-b4ae-389bf4295699</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>adecordi</ProviderName>
+  <DefaultLocale>it-IT</DefaultLocale>
+  <DisplayName DefaultValue="Lettore PDF e P7M"/>
+  <Description DefaultValue="Apre, verifica e stampa gli allegati PDF, P7M firmati, TSD, M7M e le fatture elettroniche, anche dentro le PEC. I file restano sul tuo dispositivo."/>
+  <IconUrl DefaultValue="https://adecordi.github.io/pdf/icons/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://adecordi.github.io/pdf/icons/icon-128.png"/>
+  <SupportUrl DefaultValue="https://adecordi.github.io/pdf/outlook/"/>
+  <AppDomains>
+    <AppDomain>https://adecordi.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://adecordi.github.io/pdf/?outlook=1"/>
+        <RequestedHeight>450</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <!-- La versione 1.1 serve per il riquadro aggiungibile (SupportsPinning). -->
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.8">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <FunctionFile resid="Commands.Url"/>
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="lettoreGroup">
+                  <Label resid="Group.Label"/>
+                  <Control xsi:type="Button" id="lettoreOpenPane">
+                    <Label resid="Button.Label"/>
+                    <Supertip>
+                      <Title resid="Button.Label"/>
+                      <Description resid="Button.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16"/>
+                      <bt:Image size="32" resid="Icon.32"/>
+                      <bt:Image size="80" resid="Icon.80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16" DefaultValue="https://adecordi.github.io/pdf/icons/icon-16.png"/>
+          <bt:Image id="Icon.32" DefaultValue="https://adecordi.github.io/pdf/icons/icon-32.png"/>
+          <bt:Image id="Icon.80" DefaultValue="https://adecordi.github.io/pdf/icons/icon-80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="Commands.Url" DefaultValue="https://adecordi.github.io/pdf/outlook/commands.html"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://adecordi.github.io/pdf/?outlook=1"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="Group.Label" DefaultValue="Lettore PDF"/>
+          <bt:String id="Button.Label" DefaultValue="Apri allegati"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="Button.Tooltip" DefaultValue="Apri, verifica e stampa gli allegati PDF, P7M e le fatture elettroniche del messaggio."/>
+        </bt:LongStrings>
+      </Resources>
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

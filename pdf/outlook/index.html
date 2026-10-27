@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lettore PDF e P7M per Outlook</title>
+  <meta name="description" content="Come installare il Lettore PDF e P7M in Outlook: apri, verifica e stampa gli allegati firmati e le fatture elettroniche direttamente dalla posta.">
+  <link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #f7f8fa; --surface: #fff; --text: #1c2130; --muted: #5b6475; --border: #dde1e8;
+      --accent: #2357d1; --accent-text: #fff; --note: #fdf1dc; --note-text: #8f5a00;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1b1d22; --surface: #24272e; --text: #e7e9ee; --muted: #a2a9b7; --border: #383c46;
+        --accent: #7ea3ff; --accent-text: #0f1630; --note: #3a2d14; --note-text: #f2bd5c;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+    header { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+    header img { width: 56px; height: 56px; }
+    h1 { margin: 0; font-size: 26px; line-height: 1.2; }
+    header p { margin: 4px 0 0; color: var(--muted); }
+    h2 { margin: 32px 0 10px; font-size: 19px; }
+    .card { padding: 18px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .download { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 12px 20px; border-radius: 10px; background: var(--accent); color: var(--accent-text); font-weight: 600; text-decoration: none; }
+    ol, ul { padding-left: 22px; margin: 8px 0; }
+    li { margin: 6px 0; }
+    code, kbd { padding: 1px 6px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); font: 14px ui-monospace, Menlo, Consolas, monospace; }
+    .note { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--note); color: var(--note-text); font-size: 15px; }
+    .muted { color: var(--muted); font-size: 15px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="../icons/icon.svg" alt="">
+    <div>
+      <h1>Lettore PDF e P7M per Outlook</h1>
+      <p>Apri, verifica e stampa gli allegati firmati e le fatture elettroniche senza uscire dalla posta.</p>
+    </div>
+  </header>
+
+  <div class="card">
+    <p style="margin-top:0">Dopo l'installazione, aprendo un messaggio trovi il pulsante <strong>«Apri allegati»</strong>: si apre un riquadro con l'elenco degli allegati.</p>
+    <ul>
+      <li>I file <code>.p7m</code>, <code>.tsd</code>, <code>.m7m</code>, i PDF e le fatture elettroniche si aprono con un clic, con la verifica delle firme.</li>
+      <li>Nelle <strong>PEC</strong> mostra anche gli allegati contenuti in <code>postacert.eml</code>.</li>
+      <li>Se c'è un solo documento da aprire, si apre da solo.</li>
+      <li>Il pulsante <strong>«Apri in una finestra grande»</strong> porta il documento nel lettore a tutto schermo.</li>
+    </ul>
+    <p class="muted" style="margin-bottom:0">Gli allegati vengono letti solo dentro il riquadro, sul tuo dispositivo: non vengono inviati a nessun server.</p>
+  </div>
+
+  <h2>1. Scarica il file di installazione</h2>
+  <a class="download" href="manifest.xml" download="lettore-pdf-p7m-outlook.xml">Scarica il file per Outlook</a>
+  <p class="muted">È il «manifest» del componente aggiuntivo: un piccolo file XML che dice a Outlook dove si trova il lettore.</p>
+
+  <h2>2. Aggiungilo a Outlook</h2>
+  <div class="card">
+    <p style="margin-top:0"><strong>Outlook sul web, nuovo Outlook per Windows e Outlook per Mac</strong></p>
+    <ol>
+      <li>Apri <a href="https://aka.ms/olksideload" target="_blank" rel="noopener">aka.ms/olksideload</a>: si apre Outlook con la finestra dei componenti aggiuntivi.</li>
+      <li>Scegli <strong>Componenti aggiuntivi personali</strong>.</li>
+      <li>In fondo, sotto <strong>Componenti aggiuntivi personalizzati</strong>, premi <strong>Aggiungi un componente aggiuntivo personalizzato</strong> → <strong>Aggiungi da file…</strong>.</li>
+      <li>Seleziona il file scaricato e conferma con <strong>Installa</strong>.</li>
+    </ol>
+    <p><strong>Outlook classico per Windows</strong></p>
+    <ol>
+      <li>Nella scheda <strong>Home</strong> premi <strong>Ottieni componenti aggiuntivi</strong> (o <strong>Tutte le app</strong> → <strong>Aggiungi app</strong>).</li>
+      <li>Poi segui gli stessi passaggi: <strong>Componenti aggiuntivi personali</strong> → <strong>Aggiungi un componente aggiuntivo personalizzato</strong> → <strong>Aggiungi da file…</strong>.</li>
+    </ol>
+    <p class="muted" style="margin-bottom:0">Basta installarlo una volta: compare in tutti gli Outlook collegati allo stesso account.</p>
+  </div>
+
+  <h2>3. Usalo</h2>
+  <ol>
+    <li>Apri un messaggio con allegati.</li>
+    <li>Premi <strong>Apri allegati</strong> nella barra del messaggio. In Outlook sul web lo trovi anche nel menu <strong>…</strong> → <strong>App</strong>.</li>
+    <li>Per tenere il riquadro aperto mentre cambi messaggio, premi l'icona della puntina.</li>
+  </ol>
+
+  <div class="note">
+    <strong>Limiti di Outlook.</strong> I componenti aggiuntivi funzionano con gli account Microsoft 365, Outlook.com ed Exchange.
+    Nell'Outlook classico le caselle configurate in IMAP o POP (spesso le PEC) non li supportano. In quel caso salva l'allegato e aprilo con il
+    <a href="../">lettore</a> installato come app sul computer, oppure trascinalo nella sua finestra.
+    Negli account aziendali l'amministratore può aver disattivato i componenti aggiuntivi personalizzati.
+  </div>
+
+  <h2>Disinstallare</h2>
+  <p>Torna in <a href="https://aka.ms/olksideload" target="_blank" rel="noopener">aka.ms/olksideload</a> → <strong>Componenti aggiuntivi personali</strong>, apri il menu <strong>…</strong> accanto a «Lettore PDF e P7M» e scegli <strong>Rimuovi</strong>.</p>
+
+  <p class="muted" style="margin-top:36px"><a href="../">← Torna al lettore</a></p>
+</main>
+</body>
+</html>

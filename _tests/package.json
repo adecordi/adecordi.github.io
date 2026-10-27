@@ -1,0 +1,14 @@
+{
+  "name": "lettore-pdf-test",
+  "private": true,
+  "description": "Test end-to-end del Lettore PDF e P7M (cartella esclusa dal sito: inizia con _)",
+  "scripts": {
+    "fixtures": "bash fixtures/genera.sh",
+    "server": "node server.cjs",
+    "test": "node run.cjs",
+    "perf": "node perf.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
