@@ -1041,3 +1041,18 @@ body.anteprima .welcome .drop-card { display: none; }
 /* Link della pagina iniziale nel colore del testo, non il blu predefinito. */
 .drop-card a { color: var(--text); text-decoration-color: var(--border); text-underline-offset: 3px; }
 .drop-card a:hover { text-decoration-color: currentColor; }
+
+/* Firma e note col dito (iPad): il trascinamento sposta l'elemento invece di scorrere la pagina,
+   e le maniglie per ridimensionare si prendono anche col dito (prima 6 px). */
+#viewer .annotationEditorLayer :is(.stampEditor, .freeTextEditor, .resizer) { touch-action: none; }
+@media (pointer: coarse) {
+  #viewer .annotationEditorLayer { --resizer-size: 18px; }
+  #viewer .annotationEditorLayer .resizer:is(.topMiddle, .bottomMiddle, .middleLeft, .middleRight) { display: none; }
+}
+
+/* Tema scuro: i pulsanti pieni restano del cremisi del logo, con la scritta bianca (prima rosa #ef8a8c,
+   «un rosso diverso»). Il rosa resta per testi e contorni, che sul fondo scuro devono leggersi. */
+@media (prefers-color-scheme: dark) {
+  .btn.primary, .copy-pill { background: #a4161a; border-color: #a4161a; color: #fff; --icon-acc: currentColor; }
+  .btn.primary:hover:not(:disabled) { background: #bf2227; border-color: #bf2227; }
+}
