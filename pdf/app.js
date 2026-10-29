@@ -29,8 +29,7 @@ const els = {
   btnRotate: $("btnRotate"),
   btnFind: $("btnFind"),
   btnBox: $("btnBox"),
-  btnShot: $("btnShot"),
-  btnUnderline: $("btnUnderline"),
+  btnSelText: $("btnSelText"),
   btnNote: $("btnNote"),
   btnUndo: $("btnUndo"),
   btnRedo: $("btnRedo"),
@@ -782,7 +781,12 @@ async function explain(req) {
     if (doc !== current) return;
     els.sigPanel.hidden = true;
     els.fillPanel.hidden = true;
-    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name, "spiega");
+    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name, req.compito === "traduci" ? "traduci" : "spiega");
+    // Il pezzo spiegato resta in vista accanto (o sopra) al pannello.
+    const sel = window.getSelection();
+    const nodo = sel && sel.rangeCount ? sel.getRangeAt(0).startContainer : null;
+    const el = nodo && (nodo.nodeType === 1 ? nodo : nodo.parentElement);
+    if (el && els.viewerContainer.contains(el)) setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 250);
   } catch (e) {
     toast(e.message || String(e), "error");
   }
@@ -950,9 +954,9 @@ els.btnFill.addEventListener("click", fillForm);
 els.btnSum.addEventListener("click", summarize);
 els.sumClose.addEventListener("click", () => (els.sumPanel.hidden = true));
 els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
-els.btnBox.addEventListener("click", () => V && V.setBoxMode(!(V.isBoxMode() && !V.isShotMode())));
-els.btnShot.addEventListener("click", () => V && V.setShotMode(!V.isShotMode()));
-els.btnUnderline.addEventListener("click", () => V && V.toggleUnderline());
+// Due modi di selezionare: testo (riga per riga, quello normale) o riquadro.
+els.btnSelText.addEventListener("click", () => V && V.setBoxMode(false));
+els.btnBox.addEventListener("click", () => V && V.setBoxMode(true));
 els.btnNote.addEventListener("click", addNote);
 els.sigChip.addEventListener("click", () => toggleSigPanel());
 els.sigClose.addEventListener("click", () => toggleSigPanel(false));
@@ -1027,6 +1031,17 @@ window.addEventListener("keydown", (e) => {
     else if (V) V.closeFind();
   }
 });
+
+/* ------------------------------------------- Pannello accanto al PDF */
+
+// Spiegazione, riassunto, modulo compilato e firme non coprono il PDF: gli stanno accanto
+// (Alessandro, 29/10/2026: «il testo e il PDF insieme»). Lo spazio lo divide il CSS.
+{
+  const pannelli = [els.sumPanel, els.fillPanel, els.sigPanel];
+  const aggiorna = () => document.body.classList.toggle("panel-open", pannelli.some((p) => !p.hidden));
+  const mo = new MutationObserver(aggiorna);
+  for (const p of pannelli) mo.observe(p, { attributes: true, attributeFilter: ["hidden"] });
+}
 
 /* ------------------------------------------------- App installabile */
 

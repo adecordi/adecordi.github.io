@@ -53,6 +53,9 @@ const FAKE = "https://compilatore.prova";
   // Colonna di sinistra: nell'immagine va da 120 a ~420 px su 1240 di larghezza.
   const pb0 = await (await page.$(".page[data-page-number='1'] canvas")).boundingBox();
   await drag([s1.x - 6, s1.y - 4], [pb0.x + pb0.width * 0.45, s3.y + s3.height + 4]);
+  // Dal 29/10/2026 il riquadro apre il menu: si copia con «Copia».
+  await page.waitForSelector(".copy-pill:not([hidden])");
+  await page.click(".copy-pill [data-a='copia']");
   await page.waitForTimeout(200);
   const col = await clipboard();
   check("riquadro: solo la colonna scelta", col === "Sinistra 1 alfa\nSinistra 2 alfa\nSinistra 3 alfa", JSON.stringify(col));
@@ -112,6 +115,8 @@ const FAKE = "https://compilatore.prova";
   await page.keyboard.down("Alt");
   await drag([r1[0].x - 4, r1[0].y - 3], [r1[0].x + r1[0].w * 0.2, r1[1].y + r1[1].h + 3]);
   await page.keyboard.up("Alt");
+  await page.waitForSelector(".copy-pill:not([hidden])");
+  await page.click(".copy-pill [data-a='copia']");
   await page.waitForTimeout(200);
   check("Alt + trascina sul testo vero", /^Riga 1: ?c\S*\nRiga 2: ?c\S*$/.test(await clipboard()), JSON.stringify(await clipboard()));
 

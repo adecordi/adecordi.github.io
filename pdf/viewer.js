@@ -49,7 +49,7 @@ export function init(elements, hooks) {
     linkService,
     findController,
     imageResourcesPath: LIB + "images/",
-    annotationEditorHighlightColors: "rosso=#A4161A", // le sottolineature (vedi testo.underline)
+    annotationEditorHighlightColors: "rosso=#A4161A,giallo=#FFE16A", // le sottolineature (vedi testo.underline)
   });
   linkService.setViewer(pdfViewer);
   testo.init(pdfjsLib, pdfViewer, eventBus, els, hooks);
@@ -58,6 +58,16 @@ export function init(elements, hooks) {
   bindFind();
   bindUndo();
   bindSignatureReopen();
+  // Quando lo spazio cambia (pannello accanto aperto o chiuso, finestra ridimensionata, iPad
+  // ruotato) la pagina si riadatta, se lo zoom è «Automatico», «Larghezza» o «Pagina intera».
+  let refit = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(refit);
+    refit = requestAnimationFrame(() => {
+      const v = pdfViewer.currentScaleValue;
+      if (pdfViewer.pdfDocument && ["auto", "page-width", "page-fit"].includes(v)) pdfViewer.currentScaleValue = v;
+    });
+  }).observe(els.viewerContainer);
 }
 
 /* ----------------------------------------------------- Apertura PDF */
@@ -221,8 +231,6 @@ export async function documentText(pdf) {
   return out;
 }
 export const isShotMode = testo.isShotMode;
-export const toggleUnderline = testo.toggleUnderline;
-export const isUnderlineMode = testo.isUnderlineMode;
 
 let imageGuard = null;
 let touchGuard = null;
@@ -306,7 +314,7 @@ export function endImage() {
  */
 function bindSignatureReopen() {
   els.viewer.addEventListener("pointerdown", (e) => {
-    if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE || testo.isBoxMode() || testo.isUnderlineMode()) return;
+    if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE || testo.isBoxMode()) return;
     const hit = [...els.viewer.querySelectorAll(".stampEditor")].some((s) => {
       const r = s.getBoundingClientRect();
       return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;

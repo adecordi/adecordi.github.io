@@ -227,7 +227,8 @@ export async function spiega(name, req, ui) {
   if (!cfg) throw new Error("Per farti spiegare un pezzo collega prima il compilatore.");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
-  ui.busy(req.png ? "L'AI guarda il ritaglio… (di solito meno di un minuto)" : "L'AI legge il pezzo selezionato…",
+  ui.busy(req.compito === "traduci" ? "L'AI traduce il pezzo selezionato…"
+    : req.png ? "L'AI guarda il ritaglio… (di solito meno di un minuto)" : "L'AI legge il pezzo selezionato…",
     { onCancel: () => ctrl.abort() });
   try {
     let res;
@@ -235,7 +236,7 @@ export async function spiega(name, req, ui) {
       res = await fetch(cfg.url + "/spiega", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
-        body: JSON.stringify({ nome: name, testo: req.testo || "", png: req.png || "", contesto: req.contesto || "" }),
+        body: JSON.stringify({ nome: name, testo: req.testo || "", png: req.png || "", contesto: req.contesto || "", compito: req.compito || "spiega" }),
         signal: ctrl.signal,
         ...addressSpace(cfg.url),
       });
@@ -281,12 +282,15 @@ function markdown(md) {
 
 export function renderSummary(panel, body, md, name, kind = "riassunto") {
   const spiega = kind === "spiega";
+  const traduci = kind === "traduci";
   const title = panel.querySelector("h2");
-  if (title) title.textContent = spiega ? "Spiegazione" : "Riassunto";
+  if (title) title.textContent = traduci ? "Traduzione" : spiega ? "Spiegazione" : "Riassunto";
   body.replaceChildren(
-    h("p", { class: "fill-hint" }, spiega
-      ? `Spiegazione dell'AI di un pezzo di «${name}»: è un aiuto a capire, il testo che vale è quello del documento.`
-      : `Riassunto di «${name}», scritto dall'AI: controlla i dati importanti sul documento.`),
+    h("p", { class: "fill-hint" }, traduci
+      ? `Traduzione dell'AI di un pezzo di «${name}»: per un uso ufficiale serve una traduzione verificata.`
+      : spiega
+        ? `Spiegazione dell'AI di un pezzo di «${name}»: è un aiuto a capire, il testo che vale è quello del documento.`
+        : `Riassunto di «${name}», scritto dall'AI: controlla i dati importanti sul documento.`),
     h("div", { class: "riassunto" }, markdown(md)),
     h("div", { class: "copy-actions" },
       h("button", { class: "btn", type: "button", onclick: async (e) => {
@@ -296,7 +300,7 @@ export function renderSummary(panel, body, md, name, kind = "riassunto") {
         } catch {
           e.target.textContent = "Non riesco a copiare";
         }
-      } }, spiega ? "Copia la spiegazione" : "Copia il riassunto")));
+      } }, traduci ? "Copia la traduzione" : spiega ? "Copia la spiegazione" : "Copia il riassunto")));
   panel.hidden = false;
 }
 

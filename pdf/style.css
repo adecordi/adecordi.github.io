@@ -1088,3 +1088,23 @@ body.anteprima .welcome .drop-card { display: none; }
   .tb-file { flex: 1 1 auto; }
   .tb-view { order: 3; width: 100%; justify-content: center; }
 }
+
+/* ------------------------------------------- Pannello accanto al PDF (29/10/2026) */
+/* Con un pannello aperto il PDF si restringe e resta visibile: a destra su schermi larghi,
+   nella metà bassa su iPad in verticale e telefono. */
+:root { --pannello: min(440px, 40vw); }
+body.panel-open .sig-panel { box-shadow: none; animation: none; }
+@media (min-width: 761px) and (orientation: landscape), (min-width: 1100px) {
+  body.panel-open .sig-panel { width: var(--pannello); }
+  body.panel-open .viewer-container { right: var(--pannello); }
+}
+@media (max-width: 1099px) and (orientation: portrait), (max-width: 760px) {
+  body.panel-open .sig-panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 50%; max-height: 50%;
+    border-left: 0; border-top: 1px solid var(--border); border-radius: 14px 14px 0 0;
+  }
+  body.panel-open .viewer-container { bottom: 50%; }
+}
+
+/* Menu dopo la selezione: va a capo se lo schermo è stretto (telefono). */
+.copy-pill { flex-wrap: wrap; max-width: calc(100vw - 16px); border-radius: 14px; }
