@@ -1,6 +1,6 @@
 // Service worker: rende il lettore utilizzabile anche offline e riceve i file
 // condivisi da altre app (Android). Aggiornare VERSION a ogni modifica dei file.
-const VERSION = "2026-10-29.9";
+const VERSION = "2026-10-29.10";
 const CACHE = `lettore-pdf-${VERSION}`;
 const SHARED_CACHE = "lettore-pdf-condivisi";
 
@@ -35,6 +35,9 @@ const CORE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(CORE.map((url) => new Request(url, { cache: "reload" }))))
+      // Subito attiva: su iPad Safari e l'app restano aperti in sottofondo e la versione nuova
+      // aspetterebbe all'infinito che si chiudessero (29/10/2026).
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -42,7 +45,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k.startsWith("lettore-pdf-") && k !== CACHE && k !== SHARED_CACHE).map((k) => caches.delete(k)))
-    )
+    ).then(() => self.clients.claim())
   );
 });
 

@@ -1037,7 +1037,14 @@ window.addEventListener("appinstalled", () => (els.btnInstall.hidden = true));
 
 // Dentro Outlook niente service worker: il componente aggiuntivo carica sempre l'ultima versione.
 if ("serviceWorker" in navigator && window.isSecureContext && !OUTLOOK) {
+  const primo = !navigator.serviceWorker.controller;
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("Service worker non registrato:", e));
+  // Versione nuova attiva: senza documento aperto si ricarica da sola, altrimenti lo si dice.
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (primo) return; // prima installazione, non un aggiornamento
+    if (!doc) location.reload();
+    else toast("C'è una versione nuova di C.A.R.T.A.: si vedrà alla prossima apertura.");
+  });
 }
 
 // File aperti con "Apri con…" quando l'app è installata (Chrome/Edge).
