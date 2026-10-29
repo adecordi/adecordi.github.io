@@ -373,7 +373,9 @@ function canvasToPng(canvas) {
     const worker = new Worker(new URL("./print-encoder.js", import.meta.url));
     const pending = new Map();
     worker.onmessage = ({ data }) => {
-      const { resolve, reject } = pending.get(data.id);
+      const entry = pending.get(data.id);
+      if (!entry) return; // risposta arrivata dopo un errore del worker
+      const { resolve, reject } = entry;
       pending.delete(data.id);
       if (data.blob) resolve(data.blob);
       else reject(new Error(data.error));

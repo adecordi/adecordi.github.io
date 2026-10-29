@@ -706,23 +706,23 @@ function saveBytes(data, name, mime = "application/octet-stream") {
 }
 
 // Contenuto del documento estratto; se l'utente ha compilato dei moduli, include i valori inseriti.
-async function documentBytes() {
-  if (doc.pdf && doc.pdf.annotationStorage.size > 0) {
+async function documentBytes(d = doc) {
+  if (d.pdf && d.pdf.annotationStorage.size > 0) {
     try {
-      return await doc.pdf.saveDocument();
+      return await d.pdf.saveDocument();
     } catch (e) {
       console.warn(e);
       // Succede con firme e immagini sui browser senza OffscreenCanvas (Safari prima di iPadOS 16.4).
       toast("Questo browser non riesce a scrivere la firma dentro il PDF, quindi il file è senza. Su iPad e iPhone serve iPadOS/iOS 16.4 o più recente; altrimenti firma da un computer.", "error");
     }
   }
-  return doc.data;
+  return d.data;
 }
 
 async function downloadDocument() {
   if (!doc) return;
   const current = doc;
-  const data = await documentBytes();
+  const data = await documentBytes(current);
   saveBytes(data, current.name, current.type.mime);
 }
 

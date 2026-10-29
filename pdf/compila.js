@@ -10,7 +10,11 @@ const TIMEOUT = 180000;
 
 // Indirizzi della rete locale: un compilatore lì può rispondere anche in http.
 function isLocalHost(host) {
-  return host === "localhost" || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  if (host === "localhost") return true;
+  const ip = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!ip || ip.slice(1).some((n) => Number(n) > 255)) return false;
+  const [a, b] = [Number(ip[1]), Number(ip[2])];
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
 /**
@@ -41,7 +45,12 @@ export function linkFromHash() {
   history.replaceState(null, "", location.pathname + location.search);
   try {
     const u = new URL(url);
-    if (u.protocol !== "https:" && !isLocalHost(u.hostname)) return false;
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && isLocalHost(u.hostname))) return false;
+    const prima = config();
+    const nuovo = u.href.replace(/\/$/, "");
+    if (prima && prima.url !== nuovo
+      && !confirm(`Questo link collega C.A.R.T.A. a un altro compilatore:\n${u.host}\n\nAl posto di ${new URL(prima.url).host}. `
+        + "I documenti da compilare, riassumere o spiegare andranno lì. Continuo?")) return false;
     localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave }));
     return true;
   } catch {

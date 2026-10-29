@@ -253,6 +253,7 @@ async function recognizeRemote(page, textUnits, level) {
   const { canvas, toPdf } = await renderPage(page, SERVER_DPI, SERVER_MAX_PIXELS);
   const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
   canvas.width = canvas.height = 0;
+  if (!blob) throw new Error("pagina troppo grande per questo dispositivo");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -503,7 +504,7 @@ function bindBoxSelection() {
     // Safari accetta la copia solo se parte subito, dentro il gesto: gli si passa il testo
     // ancora da calcolare (ClipboardItem con una promessa), come raccomanda Apple.
     let copied = null;
-    if (SAFARI && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    if (!underlineMode && SAFARI && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
       copied = navigator.clipboard.write([new ClipboardItem({
         "text/plain": textReady.then((t) => (t ? new Blob([t], { type: "text/plain" }) : Promise.reject(new Error("vuoto")))),
       })]);
@@ -552,7 +553,7 @@ function shoot(b) {
     w = view.viewport.width;
     h = view.viewport.height;
   }
-  const f = Math.max(1, Math.min(SHOT_SCALE, Math.sqrt(30e6 / (w * h))));
+  const f = Math.max(0.25, Math.min(SHOT_SCALE, Math.sqrt(30e6 / (w * h))));
   const png = (async () => {
     const vp = view.pdfPage.getViewport({
       scale: view.viewport.scale * f, rotation: view.viewport.rotation, offsetX: -x0 * f, offsetY: -y0 * f,
@@ -643,9 +644,9 @@ function showCopied(text, ok, pick = null) {
       if (a === "copia") {
         try {
           await navigator.clipboard.writeText(card.querySelector("pre").textContent);
-          showCopied(card.querySelector("pre").textContent, true);
+          showCopied(card.querySelector("pre").textContent, true, card.pick);
         } catch {
-          showCopied(card.querySelector("pre").textContent, false);
+          showCopied(card.querySelector("pre").textContent, false, card.pick);
         }
       }
     });
@@ -913,7 +914,7 @@ export async function underline(pick) {
       if (!ed) continue;
       n++;
       // Una sottolineatura rimasta selezionata prenderebbe i parametri pensati per le note (il colore).
-      ed._uiManager.unselectAll();
+      if (ed._uiManager && ed._uiManager.unselectAll) ed._uiManager.unselectAll();
     }
   } finally {
     // In modalità «evidenzia» PDF.js evidenzierebbe da sé ogni selezione: si torna subito a quella normale.
