@@ -842,6 +842,11 @@ body.outlook .welcome { place-items: start center; }
 .fill-list.todo strong { color: var(--bad); }
 .fill-list.todo span { color: var(--muted); }
 
+/* ----------------------------- Anteprima di Outlook classico / Esplora file */
+
+body.anteprima :is(#btnOpen, #btnInstall, .share-wrap, #btnWindow) { display: none !important; }
+body.anteprima .welcome .drop-card { display: none; }
+
 /* ------------------------------------------------------------ Schermi piccoli */
 
 @media (max-width: 760px) {

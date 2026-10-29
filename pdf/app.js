@@ -1010,6 +1010,21 @@ function receiveFromOpener() {
   window.opener.postMessage({ type: "lettore-pronto" }, location.origin);
 }
 
+// Anteprima di Outlook classico ed Esplora file: il programma «C.A.R.T.A. anteprima» apre il
+// lettore in WebView2 e gli passa il file con un messaggio (vedi il gestore di anteprima).
+if (new URLSearchParams(location.search).has("anteprima")) document.body.classList.add("anteprima");
+if (window.chrome && window.chrome.webview) {
+  window.chrome.webview.addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d.tipo !== "carta-file" || !d.b64) return;
+    const s = atob(d.b64);
+    const bytes = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+    openBytes(bytes, d.nome || "documento");
+  });
+  window.chrome.webview.postMessage("carta-pronta");
+}
+
 if (compilatore.linkFromHash()) {
   toast("Compilatore collegato: il pulsante «Compila» compare quando apri un PDF.");
 }
