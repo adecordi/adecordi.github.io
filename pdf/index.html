@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>C.A.R.T.A. · Lettore PDF e P7M</title>
-  <meta name="description" content="C.A.R.T.A. (Compila Automaticamente Righe, Testi e Anagrafiche): lettore leggero di PDF e documenti firmati digitalmente (.p7m, .tsd, .m7m): apri, verifica la firma, stampa e salva. Tutto avviene sul tuo dispositivo.">
+  <meta name="description" content="C.A.R.T.A. (Compilatore Automatico di Righe, Testi e Anagrafiche): lettore leggero di PDF e documenti firmati digitalmente (.p7m, .tsd, .m7m): apri, verifica la firma, stampa e salva. Tutto avviene sul tuo dispositivo.">
   <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1b1d22" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
@@ -72,7 +72,7 @@
     </div>
 
     <div class="tb-group tb-view" id="viewControls" hidden>
-      <div class="tb-cluster">
+      <div class="tb-cluster" role="group" aria-label="Pagine">
         <button class="btn icon-only" id="btnPrev" type="button" title="Pagina precedente" aria-label="Pagina precedente"><svg class="icon"><use href="#i-prev"/></svg></button>
         <label class="page-box">
           <span class="visually-hidden">Pagina</span>
@@ -81,7 +81,7 @@
         </label>
         <button class="btn icon-only" id="btnNext" type="button" title="Pagina successiva" aria-label="Pagina successiva"><svg class="icon"><use href="#i-next"/></svg></button>
       </div>
-      <div class="tb-cluster">
+      <div class="tb-cluster" role="group" aria-label="Vista">
         <button class="btn icon-only" id="btnZoomOut" type="button" title="Riduci (Ctrl+-)" aria-label="Riduci"><svg class="icon"><use href="#i-minus"/></svg></button>
         <select id="zoomSelect" aria-label="Zoom">
           <option value="auto">Automatico</option>
@@ -99,46 +99,56 @@
           <option value="custom" id="zoomCustom" hidden disabled></option>
         </select>
         <button class="btn icon-only" id="btnZoomIn" type="button" title="Ingrandisci (Ctrl++)" aria-label="Ingrandisci"><svg class="icon"><use href="#i-plus"/></svg></button>
-      </div>
-      <div class="tb-cluster">
         <button class="btn icon-only" id="btnRotate" type="button" title="Ruota le pagine di 90°" aria-label="Ruota le pagine"><svg class="icon"><use href="#i-rotate"/></svg></button>
+      </div>
+      <div class="tb-cluster" role="group" aria-label="Trova">
         <button class="btn icon-only" id="btnFind" type="button" title="Cerca nel documento (Ctrl+F)" aria-label="Cerca nel documento" aria-controls="findbar"><svg class="icon"><use href="#i-search"/></svg></button>
-        <button class="btn icon-only" id="btnBox" type="button" aria-pressed="false" title="Seleziona il testo con un riquadro e copialo (anche: Alt + trascina)" aria-label="Selezione a riquadro"><svg class="icon"><use href="#i-box"/></svg></button>
-        <button class="btn icon-only" id="btnShot" type="button" aria-pressed="false" title="Screenshot: trascina un rettangolo (un clic = tutta la pagina); l'immagine va negli appunti" aria-label="Screenshot"><svg class="icon"><use href="#i-shot"/></svg></button>
-        <button class="btn icon-only" id="btnUnderline" type="button" aria-pressed="false" title="Sottolinea il testo selezionato (senza selezione: ogni testo che selezioni viene sottolineato, Esc per finire)" aria-label="Sottolinea"><svg class="icon"><use href="#i-underline"/></svg></button>
-        <button class="btn icon-only" id="btnUndo" type="button" title="Annulla (Ctrl+Z)" aria-label="Annulla"><svg class="icon"><use href="#i-undo"/></svg></button>
-        <button class="btn icon-only" id="btnRedo" type="button" title="Ripeti (Ctrl+Y)" aria-label="Ripeti"><svg class="icon"><use href="#i-redo"/></svg></button>
-        <button class="btn icon-only" id="btnNote" type="button" title="Inserisci una nota: clicca sulla pagina e scrivi" aria-label="Inserisci una nota"><svg class="icon"><use href="#i-note"/></svg></button>
         <div class="ocr-wrap">
           <button class="btn icon-only" id="btnOcr" type="button" title="Riconosci il testo della pagina (OCR)" aria-label="Riconosci il testo" aria-haspopup="menu" aria-expanded="false" aria-controls="ocrMenu"><svg class="icon"><use href="#i-ocr"/></svg></button>
           <div class="share-menu ocr-menu" id="ocrMenu" role="menu" hidden></div>
         </div>
       </div>
+      <div class="tb-cluster" role="group" aria-label="Annota">
+        <button class="btn icon-only" id="btnBox" type="button" aria-pressed="false" title="Seleziona il testo con un riquadro e copialo (anche: Alt + trascina)" aria-label="Selezione a riquadro"><svg class="icon"><use href="#i-box"/></svg></button>
+        <button class="btn icon-only" id="btnShot" type="button" aria-pressed="false" title="Screenshot: trascina un rettangolo (un clic = tutta la pagina); l'immagine va negli appunti" aria-label="Screenshot"><svg class="icon"><use href="#i-shot"/></svg></button>
+        <button class="btn icon-only" id="btnUnderline" type="button" aria-pressed="false" title="Sottolinea il testo selezionato (senza selezione: ogni testo che selezioni viene sottolineato, Esc per finire)" aria-label="Sottolinea"><svg class="icon"><use href="#i-underline"/></svg></button>
+        <button class="btn icon-only" id="btnNote" type="button" title="Inserisci una nota: clicca sulla pagina e scrivi" aria-label="Inserisci una nota"><svg class="icon"><use href="#i-note"/></svg></button>
+      </div>
+      <div class="tb-cluster" role="group" aria-label="Annulla e ripeti">
+        <button class="btn icon-only" id="btnUndo" type="button" title="Annulla (Ctrl+Z)" aria-label="Annulla"><svg class="icon"><use href="#i-undo"/></svg></button>
+        <button class="btn icon-only" id="btnRedo" type="button" title="Ripeti (Ctrl+Y)" aria-label="Ripeti"><svg class="icon"><use href="#i-redo"/></svg></button>
+      </div>
     </div>
 
     <div class="tb-group tb-actions">
-      <button class="btn icon-only" id="btnWindow" type="button" hidden title="Apri in una finestra grande" aria-label="Apri in una finestra grande"><svg class="icon"><use href="#i-window"/></svg></button>
-      <button class="btn icon-only-mobile" id="btnSum" type="button" hidden title="Riassumi il documento con l'AI">
+      <div class="tb-cluster" role="group" aria-label="AI">
+        <button class="btn icon-only-mobile" id="btnSum" type="button" hidden title="Riassumi il documento con l'AI">
         <svg class="icon"><use href="#i-sum"/></svg><span class="btn-label">Riassumi</span>
       </button>
-      <button class="btn icon-only-mobile" id="btnFill" type="button" hidden title="Compila il modulo con i tuoi dati">
+        <button class="btn icon-only-mobile" id="btnFill" type="button" hidden title="Compila il modulo con i tuoi dati">
         <svg class="icon"><use href="#i-wand"/></svg><span class="btn-label">Compila</span>
       </button>
-      <button class="btn icon-only-mobile" id="btnSign" type="button" title="Aggiungi la firma" disabled>
+      </div>
+      <div class="tb-cluster" role="group" aria-label="Firma">
+        <button class="btn icon-only-mobile" id="btnSign" type="button" title="Aggiungi la firma" disabled>
         <svg class="icon"><use href="#i-sign"/></svg><span class="btn-label">Firma</span>
       </button>
-      <div class="share-wrap">
+      </div>
+      <div class="tb-cluster" role="group" aria-label="Esporta">
+        <button class="btn icon-only" id="btnWindow" type="button" hidden title="Apri in una finestra grande" aria-label="Apri in una finestra grande"><svg class="icon"><use href="#i-window"/></svg></button>
+        <div class="share-wrap">
         <button class="btn" id="btnShare" type="button" title="Condividi il lettore" aria-haspopup="menu" aria-expanded="false" aria-controls="shareMenu">
           <svg class="icon"><use href="#i-share"/></svg><span class="btn-label">Condividi</span>
         </button>
         <div class="share-menu" id="shareMenu" role="menu" hidden></div>
       </div>
-      <button class="btn icon-only-mobile" id="btnDownload" type="button" title="Salva il documento" disabled>
+        <button class="btn icon-only-mobile" id="btnDownload" type="button" title="Salva il documento" disabled>
         <svg class="icon"><use href="#i-download"/></svg><span class="btn-label">Salva</span>
       </button>
-      <button class="btn primary" id="btnPrint" type="button" title="Stampa (Ctrl+P)" disabled>
+        <button class="btn primary" id="btnPrint" type="button" title="Stampa (Ctrl+P)" disabled>
         <svg class="icon"><use href="#i-print"/></svg><span class="btn-label">Stampa</span>
       </button>
+      </div>
     </div>
   </header>
 
@@ -155,7 +165,7 @@
     <section class="welcome" id="welcome">
       <div class="drop-card" id="dropCard">
         <img class="drop-logo" src="icons/logo.svg" alt="C.A.R.T.A." width="132" height="132">
-        <p class="brand"><span>Compila Automaticamente Righe, Testi e Anagrafiche</span></p>
+        <p class="brand"><span>Compilatore Automatico di Righe, Testi e Anagrafiche</span></p>
         <h1>Apri un documento</h1>
         <p class="drop-hint">Trascina qui il file, oppure</p>
         <button class="btn primary big" id="btnOpenBig" type="button">

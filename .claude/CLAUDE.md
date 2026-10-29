@@ -1,6 +1,6 @@
 # Contesto del progetto
 
-Sito personale pubblicato con GitHub Pages dal ramo `main` (https://adecordi.github.io). Il progetto principale è **C.A.R.T.A.** (Compila Automaticamente Righe, Testi e Anagrafiche), il lettore di PDF e P7M in `pdf/`. Interfaccia, commenti e messaggi di commit sono in italiano.
+Sito personale pubblicato con GitHub Pages dal ramo `main` (https://adecordi.github.io). Il progetto principale è **C.A.R.T.A.** (Compilatore Automatico di Righe, Testi e Anagrafiche), il lettore di PDF e P7M in `pdf/`. Interfaccia, commenti e messaggi di commit sono in italiano.
 
 ## C.A.R.T.A. – lettore PDF e P7M (`pdf/`)
 Web app statica, senza build: tutto avviene nel browser e i file non vengono mai inviati a un server.
@@ -19,4 +19,4 @@ Web app statica, senza build: tutto avviene nel browser e i file non vengono mai
 ## Lavori aperti
 1. Provare il componente aggiuntivo in un **Outlook reale**: installare `pdf/outlook/manifest.xml` da https://aka.ms/olksideload → Componenti aggiuntivi personali → Aggiungi da file. Controllare l'elenco degli allegati, una PEC, «Apri in una finestra grande», Stampa e Salva dentro il riquadro.
 2. Verificare i link con il PDF reale dell'utente su https://relazioni.deco.it.fo/e3ivO1CqY5km/il-commercialista-per-il-giudice/. Il riquadro giallo dei link è stato tolto perché l'area del link nel PDF è sfasata rispetto al testo.
-3. Scegliere un **logo**. Il nome è deciso (27/10/2026): **C.A.R.T.A.**, Compila Automaticamente Righe, Testi e Anagrafiche. Il logo è ancora `pdf/icons/icon.svg`, con le PNG generate da quel file.
+3. Scegliere un **logo**. Il nome è deciso (27/10/2026): **C.A.R.T.A.**, Compilatore Automatico di Righe, Testi e Anagrafiche. Il logo è ancora `pdf/icons/icon.svg`, con le PNG generate da quel file.
