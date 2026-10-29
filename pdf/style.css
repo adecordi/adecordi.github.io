@@ -309,14 +309,16 @@ main {
 }
 .drop-card {
   width: min(560px, 100%);
-  padding: 36px 32px 28px;
-  border: 2px dashed var(--border);
+  padding: 40px 36px 28px;
+  border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface);
+  box-shadow: 0 8px 28px rgb(20 24 40 / 0.06);
   text-align: center;
   transition: border-color 0.15s, background-color 0.15s;
 }
-body.dragging .drop-card { border-color: var(--accent); }
+/* Il tratteggio solo mentre si trascina un file (pareri di GPT, Gemini, DeepSeek e Grok, 29/10/2026). */
+body.dragging .drop-card { border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
 .drop-icon {
   display: inline-grid;
   place-items: center;
@@ -328,14 +330,14 @@ body.dragging .drop-card { border-color: var(--accent); }
   color: var(--accent);
 }
 .drop-icon .icon { width: 32px; height: 32px; stroke-width: 1.6; }
-.drop-logo { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
-.drop-card h1 { margin: 4px 0 6px; font-size: 24px; letter-spacing: -0.01em; }
-.brand { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0 0 14px; }
+.drop-logo { display: block; width: 96px; height: 96px; margin: 0 auto 10px; }
+.drop-card h1 { margin: 22px 0 6px; font-family: "Josefin Sans", system-ui, sans-serif; font-size: 27px; font-weight: 700; line-height: 1.15; }
+.brand { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0; }
 .brand strong { font-size: 15px; letter-spacing: 0.18em; color: var(--accent); }
-.brand span { font-size: 12.5px; color: var(--muted); }
+.brand span { font-size: 13px; letter-spacing: 0.02em; color: var(--muted); }
 body.outlook .brand { display: none; }
-.drop-hint { margin: 0 0 14px; color: var(--muted); }
-.formats { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
+.drop-hint { margin: 0 0 18px; color: var(--muted); }
+.formats { margin: 22px 0 0; color: var(--muted); font-size: 12.5px; }
 .features {
   margin: 24px 0 8px;
   padding: 20px 0 0;
@@ -347,7 +349,7 @@ body.outlook .brand { display: none; }
 }
 .features li { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--muted); }
 .features li strong { color: var(--text); }
-.features .icon { margin-top: 1px; color: var(--accent); }
+.features .icon { margin-top: 1px; color: var(--text); }
 
 /* ------------------------------------------------------------ Vista alternativa */
 
@@ -925,6 +927,11 @@ body.anteprima :is(#btnOpen, #btnInstall, .share-wrap, #btnWindow) { display: no
 body.anteprima .ocr-wrap { display: block !important; }
 body.anteprima .welcome .drop-card { display: none; }
 
+/* Senza documento la barra non mostra i pulsanti spenti (firma, salva, stampa): niente «pulsanti morti». */
+.toolbar .tb-actions .btn:disabled { display: none; }
+#btnOpenBig { min-height: 48px; padding: 0 26px; font-family: "Josefin Sans", system-ui, sans-serif; font-weight: 600; }
+#btnOpenBig .icon { --icon-acc: currentColor; }
+
 /* ---------------------------------------- Barra su una riga, solo icone */
 
 /* Le scritte dei pulsanti non si vedono più (restano nel suggerimento, «title»): così la barra
@@ -958,7 +965,11 @@ body.anteprima .welcome .drop-card { display: none; }
   #btnOpen, .tb-actions .btn { width: 38px; padding: 0; }
   #zoomSelect { max-width: 118px; }
   .sig-chip { max-width: 46vw; }
-  .drop-card { padding: 28px 18px 20px; }
+  .drop-card { padding: 28px 20px 20px; }
+  .drop-logo { width: 72px; height: 72px; }
+  .drop-card h1 { font-size: 23px; margin-top: 18px; }
+  .drop-hint { display: none; } /* sul telefono non si trascina */
+  #btnOpenBig { width: 100%; }
   .inv-parties { grid-template-columns: 1fr; }
   .inv-head h2, .inv-total strong { font-size: 19px; }
   .sheet { padding: 16px; }
@@ -1026,3 +1037,7 @@ body.anteprima .welcome .drop-card { display: none; }
 .copy-actions .btn[hidden] { display: none !important; }
 .viewer-container.underline-mode .textLayer { cursor: text; }
 .viewer-container.underline-mode .textLayer ::selection { background: rgba(164, 22, 26, 0.25); }
+
+/* Link della pagina iniziale nel colore del testo, non il blu predefinito. */
+.drop-card a { color: var(--text); text-decoration-color: var(--border); text-underline-offset: 3px; }
+.drop-card a:hover { text-decoration-color: currentColor; }
