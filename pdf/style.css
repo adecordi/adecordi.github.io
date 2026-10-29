@@ -1056,3 +1056,7 @@ body.anteprima .welcome .drop-card { display: none; }
   .btn.primary, .copy-pill { background: #a4161a; border-color: #a4161a; color: #fff; --icon-acc: currentColor; }
   .btn.primary:hover:not(:disabled) { background: #bf2227; border-color: #bf2227; }
 }
+
+/* Mentre si sistema la firma: niente selezione del testo né menu di iPadOS sotto il dito. */
+.viewer-container.sign-mode :is(.textLayer, .ocrLayer) { -webkit-user-select: none; user-select: none; pointer-events: none; }
+.viewer-container.sign-mode .stampEditor { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }

@@ -696,7 +696,7 @@ function selectionInViewer() {
 function bindCopyFeedback() {
   // Selezione normale: un pulsante «Copia» accanto a dove si è lasciato il mouse o il dito.
   els.viewerContainer.addEventListener("pointerup", (e) => {
-    if (boxMode || e.altKey) return;
+    if (boxMode || e.altKey || els.viewerContainer.classList.contains("sign-mode")) return;
     setTimeout(() => {
       const text = selectionInViewer();
       if (!text.trim()) return hidePill();

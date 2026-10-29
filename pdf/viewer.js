@@ -223,6 +223,7 @@ export const toggleUnderline = testo.toggleUnderline;
 export const isUnderlineMode = testo.isUnderlineMode;
 
 let imageGuard = null;
+let touchGuard = null;
 
 /**
  * Inserisce un'immagine (la firma) al centro della parte visibile della pagina corrente,
@@ -255,6 +256,14 @@ export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }
     editor.width = w / pw;
     editor.height = hgt / ph;
   }
+  // iPad (WebKit): trascinando la firma partiva la selezione del testo sotto, non lo spostamento.
+  // Finché si sistema la firma il testo non si seleziona, e il dito sulla firma non fa altro.
+  els.viewerContainer.classList.add("sign-mode");
+  if (!touchGuard) {
+    touchGuard = (e) => { if (e.target.closest(".stampEditor")) e.preventDefault(); };
+    els.viewer.addEventListener("touchstart", touchGuard, { capture: true, passive: false });
+    els.viewer.addEventListener("touchmove", touchGuard, { capture: true, passive: false });
+  }
   // In modalità «timbro» un clic su un punto vuoto aprirebbe la scelta di un'altra immagine:
   // finché si sistema la firma, quei clic chiudono la modalità invece.
   if (!imageGuard) {
@@ -273,6 +282,12 @@ export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }
 export function endImage() {
   if (imageGuard) els.viewer.removeEventListener("pointerdown", imageGuard, true);
   imageGuard = null;
+  els.viewerContainer.classList.remove("sign-mode");
+  if (touchGuard) {
+    els.viewer.removeEventListener("touchstart", touchGuard, { capture: true });
+    els.viewer.removeEventListener("touchmove", touchGuard, { capture: true });
+  }
+  touchGuard = null;
   if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE) {
     pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
   }
