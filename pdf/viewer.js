@@ -56,6 +56,8 @@ export function init(elements, hooks) {
   bindPages();
   bindZoom();
   bindFind();
+  bindUndo();
+  bindSignatureReopen();
 }
 
 /* ----------------------------------------------------- Apertura PDF */
@@ -230,12 +232,7 @@ let touchGuard = null;
  * con l'editor «timbro» di PDF.js: si sposta e si ridimensiona, e «Salva» la scrive nel PDF.
  */
 export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }) {
-  const { AnnotationEditorType } = pdfjsLib;
-  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.STAMP) {
-    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
-    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.STAMP };
-    await changed;
-  }
+  await startSignMode();
   const view = pdfViewer.getPageView(pdfViewer.currentPageNumber - 1);
   const layer = view && view.annotationEditorLayer && view.annotationEditorLayer.annotationEditorLayer;
   if (!layer) throw new Error("pagina non ancora pronta");
@@ -256,6 +253,16 @@ export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }
     editor.width = w / pw;
     editor.height = hgt / ph;
   }
+}
+
+/** Modalità «sistema la firma»: si sposta e si ridimensiona, finché non si preme «Fatto». */
+async function startSignMode() {
+  const { AnnotationEditorType } = pdfjsLib;
+  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.STAMP) {
+    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
+    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.STAMP };
+    await changed;
+  }
   // iPad (WebKit): trascinando la firma partiva la selezione del testo sotto, non lo spostamento.
   // Finché si sistema la firma il testo non si seleziona, e il dito sulla firma non fa altro.
   els.viewerContainer.classList.add("sign-mode");
@@ -265,14 +272,14 @@ export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }
     els.viewer.addEventListener("touchmove", touchGuard, { capture: true, passive: false });
   }
   // In modalità «timbro» un clic su un punto vuoto aprirebbe la scelta di un'altra immagine:
-  // finché si sistema la firma, quei clic chiudono la modalità invece.
+  // si ferma e basta. La firma si fissa solo con «Fatto» (Alessandro, 29/10/2026: toccando
+  // fuori per sbaglio sull'iPad la firma si fissava).
   if (!imageGuard) {
     imageGuard = (e) => {
       if (e.target.closest(".stampEditor, .editToolbar")) return;
       if (!e.target.closest(".annotationEditorLayer")) return;
       e.stopPropagation();
       e.preventDefault();
-      endImage();
     };
     els.viewer.addEventListener("pointerdown", imageGuard, true);
   }
@@ -291,6 +298,43 @@ export function endImage() {
   if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE) {
     pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
   }
+}
+
+/**
+ * Una firma già fissata si riprende toccandola: torna la modalità per spostarla.
+ * In modalità normale PDF.js non le fa ricevere i tocchi, quindi si guarda dove cade il dito.
+ */
+function bindSignatureReopen() {
+  els.viewer.addEventListener("pointerdown", (e) => {
+    if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE || testo.isBoxMode() || testo.isUnderlineMode()) return;
+    const hit = [...els.viewer.querySelectorAll(".stampEditor")].some((s) => {
+      const r = s.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    });
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    startSignMode().then(() => ui.signEditing && ui.signEditing());
+  }, true);
+}
+
+/* ----------------------------------------------------- Annulla e ripeti */
+
+// La cronologia è quella di PDF.js: firme, spostamenti, ridimensionamenti, note e sottolineature.
+export const undo = () => eventBus.dispatch("editingaction", { source: null, name: "undo" });
+export const redo = () => eventBus.dispatch("editingaction", { source: null, name: "redo" });
+/** Vero se PDF.js sta modificando (firma, nota...): lì Ctrl+Z lo gestisce già lui. */
+export const isEditing = () => pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE;
+
+function bindUndo() {
+  els.btnUndo.disabled = true;
+  els.btnRedo.disabled = true;
+  eventBus.on("editingstateschanged", ({ details }) => {
+    if ("hasSomethingToUndo" in details) els.btnUndo.disabled = !details.hasSomethingToUndo;
+    if ("hasSomethingToRedo" in details) els.btnRedo.disabled = !details.hasSomethingToRedo;
+  });
+  els.btnUndo.addEventListener("click", undo);
+  els.btnRedo.addEventListener("click", redo);
 }
 
 /* --------------------------------------------------------------- Note */

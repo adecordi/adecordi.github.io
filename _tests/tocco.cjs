@@ -40,6 +40,40 @@ const { FX, BASE, check, watchErrors } = require("./common.cjs");
   await page.waitForTimeout(400);
   const w = (await st.boundingBox()).width;
   check("col dito la firma si ridimensiona", w > b2.width + 40, `${Math.round(b2.width)} -> ${Math.round(w)} px`);
+
+  // Toccare fuori non fissa la firma: la barra resta, e la firma si sposta ancora.
+  const pg = await (await page.$(".page[data-page-number='1']")).boundingBox();
+  await page.tap(".page[data-page-number='1']", { position: { x: 40, y: pg.height - 60 } });
+  await page.waitForTimeout(300);
+  check("toccando fuori la firma non si fissa", await page.isVisible("#signBar"));
+  const c = await st.boundingBox();
+  await dragT(c.x + c.width / 2, c.y + c.height / 2, c.x + c.width / 2 - 60, c.y + c.height / 2 + 40);
+  await page.waitForTimeout(300);
+  const d = await st.boundingBox();
+  check("e si sposta ancora", Math.abs(d.x - c.x + 60) < 15, `${Math.round(d.x - c.x)}`);
+
+  // Annulla e Ripeti
+  check("Annulla attivo", await page.isEnabled("#btnUndo"));
+  await page.tap("#btnUndo");
+  await page.waitForTimeout(300);
+  const e1 = await st.boundingBox();
+  check("Annulla riporta la firma dov'era", Math.abs(e1.x - c.x) < 15, `${Math.round(e1.x - c.x)}`);
+  check("Ripeti attivo", await page.isEnabled("#btnRedo"));
+  await page.tap("#btnRedo");
+  await page.waitForTimeout(300);
+  const e2 = await st.boundingBox();
+  check("Ripeti la rimette", Math.abs(e2.x - d.x) < 15, `${Math.round(e2.x - d.x)}`);
+
+  // «Fatto» la fissa; toccandola si riprende
+  await page.tap("#signDone");
+  await page.waitForTimeout(300);
+  check("«Fatto» chiude la barra", await page.isHidden("#signBar"));
+  const f = await st.boundingBox();
+  await page.tap(".page[data-page-number='1']", { position: { x: f.x - pg.x + f.width / 2, y: f.y - pg.y + f.height / 2 } });
+  await page.waitForTimeout(500);
+  check("toccando la firma fissata si riprende", await page.isVisible("#signBar"));
+  await page.tap("#signDone");
+
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();
 })().catch((e) => {

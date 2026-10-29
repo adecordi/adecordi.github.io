@@ -32,6 +32,8 @@ const els = {
   btnShot: $("btnShot"),
   btnUnderline: $("btnUnderline"),
   btnNote: $("btnNote"),
+  btnUndo: $("btnUndo"),
+  btnRedo: $("btnRedo"),
   signBarText: $("signBarText"),
   btnOcr: $("btnOcr"),
   ocrMenu: $("ocrMenu"),
@@ -120,7 +122,11 @@ function loadViewer() {
     const workerPort = startWorker();
     viewerLoading = Promise.all([import("./viewer.js"), loadStylesheet("lib/pdfjs/pdf_viewer.min.css")]).then(([mod]) => {
       mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, toast, h, workerPort,
-        spiega: explain, canExplain: () => !!compilatore.config() });
+        spiega: explain, canExplain: () => !!compilatore.config(),
+        signEditing: () => {
+          els.signBarText.textContent = "Trascina la firma dove serve e ridimensionala dagli angoli.";
+          els.signBar.hidden = false;
+        } });
       V = mod;
       return mod;
     });
@@ -1004,6 +1010,10 @@ window.addEventListener("keydown", (e) => {
   } else if (mod && key === "-" && isPdf) {
     e.preventDefault();
     V.zoomOut();
+  } else if (mod && (key === "z" || key === "y") && isPdf && !V.isEditing() && !e.target.closest("input, textarea, [contenteditable='true']")) {
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) V.redo();
+    else V.undo();
   } else if (mod && key === "0" && isPdf) {
     e.preventDefault();
     V.zoomReset();
