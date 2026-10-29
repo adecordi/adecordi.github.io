@@ -726,7 +726,8 @@ body.outlook .welcome { place-items: start center; }
 /* Come lo strato di testo di PDF.js: invisibile, ma si seleziona e si copia. */
 .ocrLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; z-index: 0; color-scheme: only light; }
 .ocrLayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; font-family: sans-serif; }
-.ocrLayer ::selection { background: rgb(0 90 255 / 0.25); }
+/* Selezione ben visibile, sul testo vero e su quello riconosciuto. */
+#viewer :is(.textLayer, .ocrLayer) ::selection { background: rgb(35 87 209 / 0.42); }
 .ocrLayer br::selection { background: transparent; }
 .ocr-status {
   position: fixed;
@@ -744,10 +745,66 @@ body.outlook .welcome { place-items: start center; }
 }
 
 /* Selezione a riquadro: pulsante attivo, o Alt + trascina. */
-#btnBox[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+:is(#btnBox, #btnShot)[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .box-mode .page { cursor: crosshair; touch-action: none; }
 .box-mode :is(.textLayer, .ocrLayer) { user-select: none; pointer-events: none; }
-.boxSel { position: absolute; z-index: 5; border: 1.5px dashed #2357d1; background: rgb(35 87 209 / 0.12); pointer-events: none; }
+.boxSel { position: absolute; z-index: 5; border: 2px solid #2357d1; background: rgb(35 87 209 / 0.08); pointer-events: none; }
+.boxMark { position: absolute; z-index: 4; background: rgb(255 200 0 / 0.45); border-radius: 2px; pointer-events: none; mix-blend-mode: multiply; }
+
+/* Menu «Riconosci il testo» */
+.ocr-wrap { position: relative; }
+.ocr-menu { right: auto; left: 50%; transform: translateX(-50%); min-width: 260px; }
+.share-option:disabled { opacity: 0.5; cursor: default; }
+
+/* Che cosa è stato copiato */
+.copy-pill {
+  position: fixed;
+  z-index: 45;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #2357d1;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+}
+.copy-card {
+  position: fixed;
+  z-index: 44;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok, #1f8a4c);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.22);
+}
+.copy-card.errore { border-left-color: var(--bad); }
+.copy-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.copy-head span { color: var(--muted); font-size: 13px; }
+.copy-card pre {
+  max-height: 28vh;
+  overflow: auto;
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font: 13px/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  user-select: text;
+}
+.copy-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.copy-card img { display: none; max-width: 100%; max-height: 32vh; margin: 8px auto 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.copy-card.shot img { display: block; }
+.copy-card.shot pre, .copy-card:not(.shot) [data-a="salva"] { display: none; }
+.shot-mode .boxSel { border-style: dashed; background: rgb(35 87 209 / 0.05); }
 
 /* ------------------------------------------------------------- Firma */
 
@@ -845,6 +902,7 @@ body.outlook .welcome { place-items: start center; }
 /* ----------------------------- Anteprima di Outlook classico / Esplora file */
 
 body.anteprima :is(#btnOpen, #btnInstall, .share-wrap, #btnWindow) { display: none !important; }
+body.anteprima .ocr-wrap { display: block !important; }
 body.anteprima .welcome .drop-card { display: none; }
 
 /* ------------------------------------------------------------ Schermi piccoli */

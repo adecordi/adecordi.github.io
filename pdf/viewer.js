@@ -202,6 +202,8 @@ function updateZoomControls(scale, preset) {
 
 export const setBoxMode = testo.setBoxMode;
 export const isBoxMode = testo.isBoxMode;
+export const setShotMode = testo.setShotMode;
+export const isShotMode = testo.isShotMode;
 
 let imageGuard = null;
 

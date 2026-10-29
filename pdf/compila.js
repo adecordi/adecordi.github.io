@@ -13,6 +13,16 @@ function isLocalHost(host) {
   return host === "localhost" || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
 }
 
+/**
+ * Opzione di fetch per Chrome ed Edge: da una pagina https un indirizzo http della rete locale si
+ * chiama solo dichiarandolo, «loopback» per questo stesso computer e «local» per gli altri.
+ */
+export function addressSpace(url) {
+  const u = new URL(url);
+  if (u.protocol !== "http:") return {};
+  return { targetAddressSpace: /^(127\.|localhost$)/.test(u.hostname) ? "loopback" : "local" };
+}
+
 export function config() {
   try {
     const c = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -61,7 +71,7 @@ export async function pickupFromHash(ui) {
   ui.busy("Ricevo il documento…");
   try {
     const res = await fetch(`${base}/ritira/${encodeURIComponent(id)}`, {
-      ...(base.startsWith("http:") ? { targetAddressSpace: "local" } : {}),
+      ...addressSpace(base),
     });
     if (!res.ok) {
       const out = await res.json().catch(() => ({}));
@@ -145,7 +155,7 @@ export async function compila(file, ui) {
         signal: ctrl.signal,
         // Chrome ed Edge: da una pagina https un indirizzo http della rete locale si può chiamare
         // solo dichiarandolo (e con il permesso «rete locale»). Gli altri browser ignorano l'opzione.
-        ...(cfg.url.startsWith("http:") ? { targetAddressSpace: "local" } : {}),
+        ...addressSpace(cfg.url),
       });
     } catch (e) {
       if (e.name === "AbortError") throw new Error("Compilazione annullata.");

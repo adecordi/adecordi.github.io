@@ -29,6 +29,9 @@ const els = {
   btnRotate: $("btnRotate"),
   btnFind: $("btnFind"),
   btnBox: $("btnBox"),
+  btnShot: $("btnShot"),
+  btnOcr: $("btnOcr"),
+  ocrMenu: $("ocrMenu"),
   btnSign: $("btnSign"),
   btnFill: $("btnFill"),
   fillPanel: $("fillPanel"),
@@ -882,7 +885,8 @@ els.btnSign.addEventListener("click", addSignature);
 els.signDone.addEventListener("click", endSignature);
 els.btnFill.addEventListener("click", fillForm);
 els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
-els.btnBox.addEventListener("click", () => V && V.setBoxMode(!V.isBoxMode()));
+els.btnBox.addEventListener("click", () => V && V.setBoxMode(!(V.isBoxMode() && !V.isShotMode())));
+els.btnShot.addEventListener("click", () => V && V.setShotMode(!V.isShotMode()));
 els.sigChip.addEventListener("click", () => toggleSigPanel());
 els.sigClose.addEventListener("click", () => toggleSigPanel(false));
 

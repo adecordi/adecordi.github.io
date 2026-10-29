@@ -57,9 +57,20 @@ const FAKE = "https://compilatore.prova";
   const col = await clipboard();
   check("riquadro: solo la colonna scelta", col === "Sinistra 1 alfa\nSinistra 2 alfa\nSinistra 3 alfa", JSON.stringify(col));
   check("riquadro visibile", await page.isVisible(".boxSel"));
+  check("parole prese colorate", (await page.$$(".boxMark")).length >= 3);
+  check("pannello col testo copiato", await page.isVisible(".copy-card")
+    && (await page.textContent(".copy-card pre")) === "Sinistra 1 alfa\nSinistra 2 alfa\nSinistra 3 alfa");
   await page.screenshot({ path: SHOTS + "40-riquadro.png" });
   await page.keyboard.press("Escape");
   check("Esc chiude il riquadro", (await page.getAttribute("#btnBox", "aria-pressed")) === "false" && !(await page.$(".boxSel")));
+  check("Esc chiude anche il pannello", await page.isHidden(".copy-card"));
+
+  // --- OCR a richiesta, sul dispositivo (due passate)
+  await page.click("#btnOcr");
+  check("menu OCR: server e AI spenti senza compilatore", await page.isDisabled("#ocrMenu button:nth-child(2)") && await page.isDisabled("#ocrMenu button:nth-child(3)"));
+  await page.click("#ocrMenu button:nth-child(1)");
+  await page.waitForFunction(() => /riconosciute/.test(document.getElementById("toast").textContent), null, { timeout: 120000 });
+  check("OCR sul dispositivo a richiesta", /Pagina 1: \d+ righe/.test(await page.textContent("#toast")), await page.textContent("#toast"));
 
   // --- Firma disegnata, inserita, salvata nel PDF
   await page.click("#btnSign");

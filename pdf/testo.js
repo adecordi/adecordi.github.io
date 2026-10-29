@@ -1,10 +1,16 @@
 // Testo selezionabile oltre a quello di PDF.js: riconoscimento (OCR) delle parti
-// in bitmap, fatto nel browser con Tesseract, e selezione a riquadro (Alt+trascina
-// o pulsante «Riquadro»), che copia solo il testo dentro il rettangolo.
+// in bitmap e selezione a riquadro (Alt+trascina o pulsante), che copia solo il testo
+// dentro il rettangolo. L'OCR ha tre gradini: Tesseract nel browser (da solo, sulle
+// pagine con immagini), RapidOCR sul compilatore e l'AI del compilatore (a richiesta).
+
+import { config as compilatore, addressSpace } from "./compila.js";
 
 const TESS = new URL("./lib/tesseract/", import.meta.url).href;
-const OCR_DPI = 200;
-const OCR_MAX_PIXELS = 12e6;
+const OCR_DPI = 250;
+const OCR_MAX_PIXELS = 16e6;
+const SERVER_DPI = 200;
+const SERVER_MAX_PIXELS = 9e6;
+const MIN_CONFIDENCE = 20;
 const MIN_IMAGE_SHARE = 0.12; // OCR solo se le immagini coprono almeno il 12% della pagina
 
 let pdfjsLib;
@@ -16,6 +22,8 @@ const SAFARI = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|CriO
 
 let state = new WeakMap(); // documento -> Map(numero pagina -> dati della pagina)
 let boxMode = false;
+let boxKind = "testo"; // «testo» copia il testo, «foto» fa uno screenshot del rettangolo
+const SHOT_SCALE = 3;  // lo screenshot si disegna dal PDF a 3 volte la grandezza a schermo
 
 export function init(lib, viewer, eventBus, elements, hooks) {
   pdfjsLib = lib;
@@ -29,6 +37,8 @@ export function init(lib, viewer, eventBus, elements, hooks) {
     pageData(view).then((d) => d && d.ocr === undefined && queueOcr(view, d)).catch(() => {});
   });
   bindBoxSelection();
+  bindCopyFeedback();
+  bindOcrMenu();
 }
 
 /* ------------------------------------------------------ Dati per pagina */
@@ -145,10 +155,11 @@ async function runQueue() {
       if (job.pdf !== pdfViewer.pdfDocument) continue;
       showStatus(`Riconosco il testo della pagina ${job.view.id}…`);
       try {
-        job.d.ocr = await recognize(job.view.pdfPage, job.d.text);
+        const lines = await recognize(job.view.pdfPage, job.d.text);
+        if (!job.d.manual) job.d.ocr = lines; // un riconoscimento chiesto a mano vale di più
       } catch (e) {
         console.warn("OCR:", e);
-        job.d.ocr = null;
+        if (!job.d.manual) job.d.ocr = null;
       }
       if (job.pdf === pdfViewer.pdfDocument) drawOcrLayer(job.view);
     }
@@ -158,43 +169,191 @@ async function runQueue() {
   }
 }
 
-async function recognize(page, textUnits) {
+async function renderPage(page, dpi, maxPixels) {
   const base = page.getViewport({ scale: 1 });
-  let scale = OCR_DPI / 72;
-  if (base.width * base.height * scale * scale > OCR_MAX_PIXELS) scale = Math.sqrt(OCR_MAX_PIXELS / (base.width * base.height));
+  let scale = dpi / 72;
+  if (base.width * base.height * scale * scale > maxPixels) scale = Math.sqrt(maxPixels / (base.width * base.height));
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
   await page.render({ canvas, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
-  const worker = await tesseract();
-  const { data } = await worker.recognize(canvas);
-  canvas.width = canvas.height = 0;
   const toPdf = (bb) => {
     const [x0, y0] = viewport.convertToPdfPoint(bb.x0, bb.y1);
     const [x1, y1] = viewport.convertToPdfPoint(bb.x1, bb.y0);
     return { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1) };
   };
-  // Le parole già presenti come testo vero restano a PDF.js.
-  const covered = (r) => {
+  return { canvas, toPdf };
+}
+
+// Le parole già presenti come testo vero restano a PDF.js.
+function coveredBy(textUnits) {
+  return (r) => {
     const cx = (r.x0 + r.x1) / 2;
     const cy = (r.y0 + r.y1) / 2;
     return textUnits.some((t) => cx >= t.x0 - 1 && cx <= t.x1 + 1 && cy >= t.y0 - 1 && cy <= t.y1 + 1);
   };
+}
+
+function makeLine(words) {
+  return {
+    x0: Math.min(...words.map((w) => w.x0)), x1: Math.max(...words.map((w) => w.x1)),
+    y0: Math.min(...words.map((w) => w.y0)), y1: Math.max(...words.map((w) => w.y1)),
+    words, text: words.map((w) => w.text).join(" "),
+  };
+}
+
+function linesFromTesseract(data, toPdf, covered) {
   const lines = [];
   for (const line of data.lines || []) {
     const words = line.words
-      .filter((w) => w.confidence >= 30 && w.text.trim())
+      .filter((w) => w.confidence >= MIN_CONFIDENCE && w.text.trim())
       .map((w) => ({ ...toPdf(w.bbox), text: w.text.trim() }))
       .filter((w) => !covered(w));
-    if (!words.length) continue;
-    const box = {
-      x0: Math.min(...words.map((w) => w.x0)), x1: Math.max(...words.map((w) => w.x1)),
-      y0: Math.min(...words.map((w) => w.y0)), y1: Math.max(...words.map((w) => w.y1)),
-    };
-    lines.push({ ...box, words, text: words.map((w) => w.text).join(" ") });
+    if (words.length) lines.push(makeLine(words));
   }
   return lines;
+}
+
+const overlaps = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0.3 * Math.min(a.x1 - a.x0, b.x1 - b.x0)
+  && Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 0.3 * Math.min(a.y1 - a.y0, b.y1 - b.y0);
+
+/**
+ * Gradino 1: Tesseract nel browser. Con `thorough` fa una seconda passata a «testo sparso»
+ * (moduli, tabelle, timbri, scritte isolate) e aggiunge le parole che la prima non aveva.
+ */
+async function recognize(page, textUnits, thorough = false) {
+  const { canvas, toPdf } = await renderPage(page, OCR_DPI, OCR_MAX_PIXELS);
+  const covered = coveredBy(textUnits);
+  const worker = await tesseract();
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: "3" });
+    const lines = linesFromTesseract((await worker.recognize(canvas)).data, toPdf, covered);
+    if (thorough) {
+      await worker.setParameters({ tessedit_pageseg_mode: "11" });
+      const found = lines.flatMap((l) => l.words);
+      for (const l of linesFromTesseract((await worker.recognize(canvas)).data, toPdf, covered)) {
+        const nuove = l.words.filter((w) => !found.some((f) => overlaps(f, w)));
+        if (nuove.length) lines.push(makeLine(nuove));
+      }
+      await worker.setParameters({ tessedit_pageseg_mode: "3" });
+    }
+    return lines;
+  } finally {
+    canvas.width = canvas.height = 0;
+  }
+}
+
+// Gradini 2 e 3: l'immagine della pagina va al compilatore privato (RapidOCR, poi l'AI).
+async function recognizeRemote(page, textUnits, level) {
+  const cfg = compilatore();
+  if (!cfg) throw new Error("Per riconoscere sul server collega prima il compilatore.");
+  const { canvas, toPdf } = await renderPage(page, SERVER_DPI, SERVER_MAX_PIXELS);
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+  canvas.width = canvas.height = 0;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  let res;
+  try {
+    res = await fetch(cfg.url + "/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+      body: JSON.stringify({ png: btoa(bin), livello: level }),
+      ...addressSpace(cfg.url),
+    });
+  } catch {
+    throw new Error("Compilatore non raggiungibile (serve la rete privata o quella dell'ufficio).");
+  }
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+  const covered = coveredBy(textUnits);
+  const lines = [];
+  for (const r of out.righe || []) {
+    const box = toPdf(r);
+    if (covered(box)) continue;
+    // RapidOCR dà righe intere: le parole si stimano in proporzione ai caratteri.
+    const n = r.testo.length || 1;
+    const words = [];
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(r.testo))) {
+      words.push({ x0: box.x0 + ((box.x1 - box.x0) * m.index) / n, x1: box.x0 + ((box.x1 - box.x0) * (m.index + m[0].length)) / n,
+        y0: box.y0, y1: box.y1, text: m[0] });
+    }
+    if (words.length) lines.push(makeLine(words));
+  }
+  const info = out.info && (out.info.corrette || out.info.aggiunte)
+    ? ` (AI: ${out.info.corrette || 0} righe corrette, ${out.info.aggiunte || 0} aggiunte)` : "";
+  return { lines, info };
+}
+
+const LEVELS = { dispositivo: "sul dispositivo", server: "sul server", ai: "con l'AI" };
+
+/** Riconosce il testo della pagina corrente al gradino scelto; il risultato sostituisce quello di prima. */
+export async function recognizePage(level) {
+  const view = pdfViewer.getPageView(pdfViewer.currentPageNumber - 1);
+  if (!view || !view.pdfPage) return;
+  const d = await pageData(view);
+  const pdf = pdfViewer.pdfDocument;
+  showStatus(`Pagina ${view.id}: riconosco il testo ${LEVELS[level]}…`);
+  try {
+    let lines;
+    let info = "";
+    if (level === "dispositivo") lines = await recognize(view.pdfPage, d.text, true);
+    else ({ lines, info } = await recognizeRemote(view.pdfPage, d.text, level));
+    if (pdf !== pdfViewer.pdfDocument) return;
+    d.ocr = lines;
+    d.manual = level;
+    drawOcrLayer(view);
+    const words = lines.reduce((n, l) => n + l.words.length, 0);
+    ui.toast(`Pagina ${view.id}: ${lines.length} righe e ${words} parole riconosciute ${LEVELS[level]}${info}. Ora si possono selezionare.`);
+  } catch (e) {
+    ui.toast(e.message || String(e), "error");
+  } finally {
+    showStatus("");
+  }
+}
+
+function bindOcrMenu() {
+  const close = () => {
+    els.ocrMenu.hidden = true;
+    els.btnOcr.setAttribute("aria-expanded", "false");
+  };
+  const item = (title, sub, level, disabled) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "share-option";
+    b.setAttribute("role", "menuitem");
+    b.disabled = !!disabled;
+    const t = document.createElement("strong");
+    t.textContent = title;
+    const s = document.createElement("span");
+    s.textContent = sub;
+    b.append(t, s);
+    b.addEventListener("click", () => {
+      close();
+      recognizePage(level);
+    });
+    return b;
+  };
+  els.btnOcr.addEventListener("click", () => {
+    if (!els.ocrMenu.hidden) return close();
+    const linked = !!compilatore();
+    els.ocrMenu.replaceChildren(
+      item("Sul dispositivo", "Tesseract, due passate; il file resta qui", "dispositivo", false),
+      item("Sul server", linked ? "RapidOCR sul compilatore: più preciso" : "serve il compilatore collegato", "server", !linked),
+      item("Con l'AI", linked ? "corregge e completa (tabelle, timbri, scritte a mano)" : "serve il compilatore collegato", "ai", !linked));
+    els.ocrMenu.hidden = false;
+    els.btnOcr.setAttribute("aria-expanded", "true");
+    els.ocrMenu.querySelector("button:not(:disabled)").focus();
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!els.ocrMenu.hidden && !e.target.closest(".ocr-wrap")) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.ocrMenu.hidden) close();
+  });
 }
 
 let statusEl = null;
@@ -243,18 +402,38 @@ function drawOcrLayer(view) {
 
 /* -------------------------------------------------- Selezione a riquadro */
 
-export function setBoxMode(on) {
+export function setBoxMode(on, kind = "testo") {
   boxMode = on;
+  boxKind = kind;
   els.viewerContainer.classList.toggle("box-mode", on);
-  els.btnBox.setAttribute("aria-pressed", String(on));
+  els.viewerContainer.classList.toggle("shot-mode", on && kind === "foto");
+  els.btnBox.setAttribute("aria-pressed", String(on && kind === "testo"));
+  els.btnShot.setAttribute("aria-pressed", String(on && kind === "foto"));
   if (!on) clearBox();
 }
 export const isBoxMode = () => boxMode;
+export const setShotMode = (on) => setBoxMode(on, "foto");
+export const isShotMode = () => boxMode && boxKind === "foto";
 
 let box = null; // { view, el, x, y, pointerId }
 
 function clearBox() {
-  document.querySelectorAll(".boxSel").forEach((el) => el.remove());
+  document.querySelectorAll(".boxSel, .boxMark").forEach((el) => el.remove());
+}
+
+// Colora, sulla pagina, i pezzi di testo che il riquadro ha preso.
+function markParts(view, pageDiv, parts) {
+  for (const p of parts) {
+    const [ax, ay] = view.viewport.convertToViewportPoint(p.x0, p.yc + p.h / 2);
+    const [bx, by] = view.viewport.convertToViewportPoint(p.x1, p.yc - p.h / 2);
+    const m = document.createElement("div");
+    m.className = "boxMark";
+    Object.assign(m.style, {
+      left: `${Math.min(ax, bx)}px`, top: `${Math.min(ay, by)}px`,
+      width: `${Math.abs(bx - ax)}px`, height: `${Math.abs(by - ay)}px`,
+    });
+    pageDiv.append(m);
+  }
 }
 
 function bindBoxSelection() {
@@ -294,6 +473,7 @@ function bindBoxSelection() {
     const b = box;
     box = null;
     update(b, e);
+    if (boxKind === "foto") return shoot(b);
     if (Math.abs(b.x1 - b.x) < 4 || Math.abs(b.y1 - b.y) < 4) {
       b.el.remove();
       return;
@@ -302,11 +482,14 @@ function bindBoxSelection() {
     const [bx, by] = b.view.viewport.convertToPdfPoint(b.x1, b.y1);
     const rect = { x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: Math.min(ay, by), y1: Math.max(ay, by) };
     let d = null;
+    let parts = [];
     const textReady = pageData(b.view).then((data) => {
       d = data;
       const units = [...(d.text || [])];
       if (Array.isArray(d.ocr)) for (const line of d.ocr) units.push(...line.words);
-      return textInRect(units, rect);
+      const sel = selectInRect(units, rect);
+      parts = sel.parts;
+      return sel.text;
     });
     // Safari accetta la copia solo se parte subito, dentro il gesto: gli si passa il testo
     // ancora da calcolare (ClipboardItem con una promessa), come raccomanda Apple.
@@ -319,15 +502,16 @@ function bindBoxSelection() {
     }
     const text = await textReady;
     if (!text) {
-      ui.toast(d.ocr === "pending" ? "Sto ancora riconoscendo il testo di questa pagina: riprova tra poco." : "Nessun testo nel riquadro.");
+      ui.toast(d.ocr === "pending" ? "Sto ancora riconoscendo il testo di questa pagina: riprova tra poco."
+        : "Nessun testo nel riquadro. Se la pagina è una scansione, prova «Riconosci il testo».");
       return;
     }
+    markParts(b.view, b.pageDiv, parts);
     try {
       await (copied || navigator.clipboard.writeText(text));
-      const lines = text.split("\n").length;
-      ui.toast(`Copiato (${lines} ${lines === 1 ? "riga" : "righe"}): «${text.length > 60 ? text.slice(0, 60) + "…" : text}»`);
+      showCopied(text, true);
     } catch {
-      ui.toast("Non riesco a copiare negli appunti in questo browser.", "error");
+      showCopied(text, false);
     }
   };
   c.addEventListener("pointerup", end);
@@ -337,9 +521,199 @@ function bindBoxSelection() {
   });
 }
 
-// Testo dentro il rettangolo (coordinate PDF): taglia anche le parole a metà, così
-// si può copiare una colonna senza prendere quella accanto.
+/* ----------------------------------------------------------- Screenshot */
+
+// Il rettangolo (o, con un clic, tutta la pagina) si ridisegna dal PDF ad alta risoluzione:
+// l'immagine è nitida anche se a schermo la pagina è piccola.
+function shoot(b) {
+  const view = b.view;
+  let x0 = Math.min(b.x, b.x1);
+  let y0 = Math.min(b.y, b.y1);
+  let w = Math.abs(b.x1 - b.x);
+  let h = Math.abs(b.y1 - b.y);
+  if (w < 4 || h < 4) {
+    b.el.remove();
+    x0 = 0;
+    y0 = 0;
+    w = view.viewport.width;
+    h = view.viewport.height;
+  }
+  const f = Math.max(1, Math.min(SHOT_SCALE, Math.sqrt(30e6 / (w * h))));
+  const png = (async () => {
+    const vp = view.pdfPage.getViewport({
+      scale: view.viewport.scale * f, rotation: view.viewport.rotation, offsetX: -x0 * f, offsetY: -y0 * f,
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * f);
+    canvas.height = Math.round(h * f);
+    const pdf = pdfViewer.pdfDocument;
+    await view.pdfPage.render({
+      canvas, viewport: vp,
+      annotationMode: pdfjsLib.AnnotationMode.ENABLE_STORAGE,
+      annotationStorage: pdf.annotationStorage,
+    }).promise;
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+    canvas.width = canvas.height = 0;
+    if (!blob) throw new Error("immagine troppo grande");
+    return blob;
+  })();
+  // La copia parte subito, dentro il gesto (Safari), con l'immagine ancora da preparare.
+  let copied;
+  try {
+    copied = navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+  } catch {
+    copied = Promise.reject(new Error("appunti non disponibili"));
+  }
+  copied.catch(() => {});
+  png.then(async (blob) => {
+    let ok = true;
+    try {
+      await copied;
+    } catch {
+      ok = false;
+    }
+    showShot(blob, ok, view.id, Math.round(w * f), Math.round(h * f));
+  }, (e) => ui.toast(`Screenshot non riuscito: ${e.message || e}`, "error"));
+}
+
+/* ------------------------------------------- Che cosa è stato copiato */
+
+let card = null;
+let pill = null;
+
+// Riquadro in basso con il testo copiato: si vede esattamente cosa è negli appunti.
+function showCopied(text, ok) {
+  hidePill();
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "copy-card";
+    card.setAttribute("role", "status");
+    card.innerHTML = '<div class="copy-head"><strong></strong><span></span></div><pre></pre><img alt="">'
+      + '<div class="copy-actions"><button type="button" class="btn" data-a="salva">Salva immagine</button>'
+      + '<button type="button" class="btn" data-a="copia">Copia di nuovo</button>'
+      + '<button type="button" class="btn primary" data-a="chiudi">Chiudi</button></div>';
+    card.addEventListener("click", async (e) => {
+      const a = e.target.closest("button")?.dataset.a;
+      if (a === "chiudi") hideCopied();
+      if (a === "salva" && card.shot) {
+        const link = document.createElement("a");
+        link.href = card.querySelector("img").src;
+        link.download = card.shot.name;
+        document.body.append(link);
+        link.click();
+        link.remove();
+      }
+      if (a === "copia" && card.shot) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": card.shot.blob })]);
+          card.querySelector("strong").textContent = "✓ Immagine copiata negli appunti";
+        } catch {
+          card.querySelector("strong").textContent = "Non riesco a copiare l'immagine: usa «Salva immagine»";
+        }
+        return;
+      }
+      if (a === "copia") {
+        try {
+          await navigator.clipboard.writeText(card.querySelector("pre").textContent);
+          showCopied(card.querySelector("pre").textContent, true);
+        } catch {
+          showCopied(card.querySelector("pre").textContent, false);
+        }
+      }
+    });
+    document.body.append(card);
+  }
+  card.shot = null;
+  card.classList.remove("shot");
+  const lines = text.split("\n").length;
+  card.classList.toggle("errore", !ok);
+  card.querySelector("strong").textContent = ok ? "✓ Copiato negli appunti" : "Non sono riuscito a copiarlo: selezionalo qui sotto";
+  card.querySelector("span").textContent = `${lines} ${lines === 1 ? "riga" : "righe"} · ${text.length} caratteri`;
+  card.querySelector("pre").textContent = text;
+  card.hidden = false;
+}
+
+function showShot(blob, ok, page, w, h) {
+  showCopied("", ok);
+  const img = card.querySelector("img");
+  if (img.src) URL.revokeObjectURL(img.src);
+  img.src = URL.createObjectURL(blob);
+  const base = (document.getElementById("docTitle").textContent || "documento").replace(/\.[^.]+$/, "");
+  card.shot = { blob, name: `${base} - pagina ${page}.png` };
+  card.classList.add("shot");
+  card.querySelector("strong").textContent = ok ? "✓ Immagine copiata negli appunti" : "Immagine pronta: usa «Salva immagine»";
+  card.querySelector("span").textContent = `${w} × ${h} pixel`;
+}
+
+export function hideCopied() {
+  if (card) card.hidden = true;
+}
+
+function hidePill() {
+  if (pill) pill.hidden = true;
+}
+
+function selectionInViewer() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+  const node = sel.getRangeAt(0).commonAncestorContainer;
+  return els.viewerContainer.contains(node.nodeType === 1 ? node : node.parentNode) ? sel.toString() : "";
+}
+
+function bindCopyFeedback() {
+  // Selezione normale: un pulsante «Copia» accanto a dove si è lasciato il mouse o il dito.
+  els.viewerContainer.addEventListener("pointerup", (e) => {
+    if (boxMode || e.altKey) return;
+    setTimeout(() => {
+      const text = selectionInViewer();
+      if (!text.trim()) return hidePill();
+      if (!pill) {
+        pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = "copy-pill";
+        pill.textContent = "Copia";
+        pill.addEventListener("pointerdown", (ev) => ev.preventDefault()); // non perdere la selezione
+        pill.addEventListener("click", async () => {
+          const t = selectionInViewer() || pill.dataset.testo || "";
+          try {
+            await navigator.clipboard.writeText(t);
+            showCopied(t, true);
+          } catch {
+            showCopied(t, false);
+          }
+        });
+        document.body.append(pill);
+      }
+      pill.dataset.testo = text;
+      pill.style.left = `${Math.min(window.innerWidth - 90, e.clientX + 8)}px`;
+      pill.style.top = `${Math.min(window.innerHeight - 50, e.clientY + 14)}px`;
+      pill.hidden = false;
+    }, 0);
+  });
+  document.addEventListener("selectionchange", () => {
+    if (pill && !pill.hidden && !selectionInViewer().trim()) hidePill();
+  });
+  // Ctrl+C (o «Copia» del menu del sistema) sul testo del documento: si mostra cosa è stato copiato.
+  document.addEventListener("copy", () => {
+    const text = selectionInViewer();
+    if (text.trim()) setTimeout(() => showCopied(text, true), 0);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      hideCopied();
+      hidePill();
+    }
+  });
+}
+
+// Testo dentro il rettangolo (coordinate PDF), senza i pezzi: vedi selectInRect.
 export function textInRect(units, r) {
+  return selectInRect(units, r).text;
+}
+
+// Testo dentro il rettangolo (coordinate PDF) e i pezzi presi: taglia anche le parole a
+// metà, così si può copiare una colonna senza prendere quella accanto.
+export function selectInRect(units, r) {
   const parts = [];
   for (const u of units) {
     const h = u.y1 - u.y0;
@@ -370,7 +744,7 @@ export function textInRect(units, r) {
     else lines.push({ yc: p.yc, h: p.h, parts: [p] });
   }
   lines.sort((a, b) => b.yc - a.yc);
-  return lines.map((l) => {
+  const text = lines.map((l) => {
     l.parts.sort((a, b) => a.x0 - b.x0);
     let s = "";
     let prev = null;
@@ -381,4 +755,5 @@ export function textInRect(units, r) {
     }
     return s.replace(/\s+/g, " ").trim();
   }).filter(Boolean).join("\n");
+  return { text, parts };
 }
