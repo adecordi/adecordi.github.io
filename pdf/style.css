@@ -1071,8 +1071,8 @@ body.anteprima .welcome .drop-card { display: none; }
 .toolbar .tb-actions .tb-cluster:not(:has(> :not([hidden], .btn:disabled))) { display: none; }
 .toolbar .tb-actions { display: flex; gap: 10px; }
 .toolbar .tb-view { gap: 10px; }
-.toolbar .btn:not(.sig-chip) { width: 36px; min-height: 36px; border-radius: 8px; }
-.toolbar .btn .icon { width: 22px; height: 22px; stroke-width: 1.8; }
+.toolbar .btn:not(.sig-chip) { width: 38px; min-height: 38px; border-radius: 8px; }
+.toolbar .btn .icon { width: 24px; height: 24px; stroke-width: 1.8; }
 .toolbar .btn:not(.primary):hover:not(:disabled) { background: var(--tb-hover); }
 .toolbar .btn[aria-pressed="true"], .toolbar .btn[aria-expanded="true"] { background: var(--tb-on); }
 .toolbar .page-box input, .toolbar #zoomSelect { background: var(--surface); border-color: transparent; }
