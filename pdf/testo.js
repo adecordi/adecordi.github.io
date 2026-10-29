@@ -15,6 +15,7 @@ const MIN_IMAGE_SHARE = 0.12; // OCR solo se le immagini coprono almeno il 12% d
 
 let pdfjsLib;
 let pdfViewer;
+let bus;
 let els;
 let ui;
 
@@ -28,6 +29,7 @@ const SHOT_SCALE = 3;  // lo screenshot si disegna dal PDF a 3 volte la grandezz
 export function init(lib, viewer, eventBus, elements, hooks) {
   pdfjsLib = lib;
   pdfViewer = viewer;
+  bus = eventBus;
   els = elements;
   ui = hooks;
   eventBus.on("textlayerrendered", ({ pageNumber }) => {
@@ -514,11 +516,16 @@ function bindBoxSelection() {
       return;
     }
     markParts(b.view, b.pageDiv, parts);
+    const pick = { pages: [{ view: b.view, boxes: boxesFromParts(b.view, parts), text }] };
+    if (underlineMode) {
+      await underline(pick);
+      return;
+    }
     try {
       await (copied || navigator.clipboard.writeText(text));
-      showCopied(text, true);
+      showCopied(text, true, pick);
     } catch {
-      showCopied(text, false);
+      showCopied(text, false, pick);
     }
   };
   c.addEventListener("pointerup", end);
@@ -579,7 +586,7 @@ function shoot(b) {
     } catch {
       ok = false;
     }
-    showShot(blob, ok, view.id, Math.round(w * f), Math.round(h * f));
+    showShot(blob, ok, view, Math.round(w * f), Math.round(h * f));
   }, (e) => ui.toast(`Screenshot non riuscito: ${e.message || e}`, "error"));
 }
 
@@ -589,7 +596,7 @@ let card = null;
 let pill = null;
 
 // Riquadro in basso con il testo copiato: si vede esattamente cosa è negli appunti.
-function showCopied(text, ok) {
+function showCopied(text, ok, pick = null) {
   hidePill();
   if (!card) {
     card = document.createElement("div");
@@ -598,10 +605,24 @@ function showCopied(text, ok) {
     card.innerHTML = '<div class="copy-head"><strong></strong><span></span></div><pre></pre><img alt="">'
       + '<div class="copy-actions"><button type="button" class="btn" data-a="salva">Salva immagine</button>'
       + '<button type="button" class="btn" data-a="copia">Copia di nuovo</button>'
+      + '<button type="button" class="btn" data-a="sottolinea">Sottolinea</button>'
+      + '<button type="button" class="btn" data-a="spiega">Spiega con l\'AI</button>'
       + '<button type="button" class="btn primary" data-a="chiudi">Chiudi</button></div>';
     card.addEventListener("click", async (e) => {
       const a = e.target.closest("button")?.dataset.a;
       if (a === "chiudi") hideCopied();
+      if (a === "sottolinea" && card.pick) {
+        if (await underline(card.pick)) hideCopied();
+        return;
+      }
+      if (a === "spiega") {
+        const shot = card.shot;
+        const view = shot ? shot.view : card.pick && card.pick.pages[0] && card.pick.pages[0].view;
+        const text = shot ? "" : card.querySelector("pre").textContent;
+        hideCopied();
+        explain(text, shot ? shot.blob : null, view);
+        return;
+      }
       if (a === "salva" && card.shot) {
         const link = document.createElement("a");
         link.href = card.querySelector("img").src;
@@ -631,7 +652,10 @@ function showCopied(text, ok) {
     document.body.append(card);
   }
   card.shot = null;
+  card.pick = pick && pick.pages.length ? pick : null;
   card.classList.remove("shot");
+  card.querySelector('[data-a="sottolinea"]').hidden = !card.pick;
+  card.querySelector('[data-a="spiega"]').hidden = !(ui.canExplain && ui.canExplain());
   const lines = text.split("\n").length;
   card.classList.toggle("errore", !ok);
   card.querySelector("strong").textContent = ok ? "✓ Copiato negli appunti" : "Non sono riuscito a copiarlo: selezionalo qui sotto";
@@ -640,13 +664,14 @@ function showCopied(text, ok) {
   card.hidden = false;
 }
 
-function showShot(blob, ok, page, w, h) {
+function showShot(blob, ok, view, w, h) {
   showCopied("", ok);
+  const page = view.id;
   const img = card.querySelector("img");
   if (img.src) URL.revokeObjectURL(img.src);
   img.src = URL.createObjectURL(blob);
   const base = (document.getElementById("docTitle").textContent || "documento").replace(/\.[^.]+$/, "");
-  card.shot = { blob, name: `${base} - pagina ${page}.png` };
+  card.shot = { blob, view, name: `${base} - pagina ${page}.png` };
   card.classList.add("shot");
   card.querySelector("strong").textContent = ok ? "✓ Immagine copiata negli appunti" : "Immagine pronta: usa «Salva immagine»";
   card.querySelector("span").textContent = `${w} × ${h} pixel`;
@@ -674,25 +699,47 @@ function bindCopyFeedback() {
     setTimeout(() => {
       const text = selectionInViewer();
       if (!text.trim()) return hidePill();
+      if (underlineMode) {
+        const pick = pickFromSelection();
+        window.getSelection().removeAllRanges();
+        hidePill();
+        underline(pick);
+        return;
+      }
       if (!pill) {
-        pill = document.createElement("button");
-        pill.type = "button";
+        pill = document.createElement("div");
         pill.className = "copy-pill";
-        pill.textContent = "Copia";
+        pill.innerHTML = '<button type="button" data-a="copia">Copia</button>'
+          + '<button type="button" data-a="sottolinea">Sottolinea</button>'
+          + '<button type="button" data-a="spiega">Spiega</button>';
         pill.addEventListener("pointerdown", (ev) => ev.preventDefault()); // non perdere la selezione
-        pill.addEventListener("click", async () => {
-          const t = selectionInViewer() || pill.dataset.testo || "";
-          try {
-            await navigator.clipboard.writeText(t);
-            showCopied(t, true);
-          } catch {
-            showCopied(t, false);
+        pill.addEventListener("click", async (ev) => {
+          const a = ev.target.closest("button")?.dataset.a;
+          const live = selectionInViewer();
+          const t = live || pill.testo || "";
+          const pick = live ? pickFromSelection() : pill.pick;
+          if (a === "sottolinea") {
+            window.getSelection().removeAllRanges();
+            hidePill();
+            underline(pick);
+          } else if (a === "spiega") {
+            hidePill();
+            explain(t, null, pick && pick.pages[0] && pick.pages[0].view);
+          } else if (a === "copia") {
+            try {
+              await navigator.clipboard.writeText(t);
+              showCopied(t, true, pick);
+            } catch {
+              showCopied(t, false, pick);
+            }
           }
         });
         document.body.append(pill);
       }
-      pill.dataset.testo = text;
-      pill.style.left = `${Math.min(window.innerWidth - 90, e.clientX + 8)}px`;
+      pill.testo = text;
+      pill.pick = pickFromSelection();
+      pill.querySelector('[data-a="spiega"]').hidden = !(ui.canExplain && ui.canExplain());
+      pill.style.left = `${Math.max(8, Math.min(window.innerWidth - 260, e.clientX + 8))}px`;
       pill.style.top = `${Math.min(window.innerHeight - 50, e.clientY + 14)}px`;
       pill.hidden = false;
     }, 0);
@@ -703,12 +750,14 @@ function bindCopyFeedback() {
   // Ctrl+C (o «Copia» del menu del sistema) sul testo del documento: si mostra cosa è stato copiato.
   document.addEventListener("copy", () => {
     const text = selectionInViewer();
-    if (text.trim()) setTimeout(() => showCopied(text, true), 0);
+    const pick = text.trim() ? pickFromSelection() : null;
+    if (text.trim()) setTimeout(() => showCopied(text, true, pick), 0);
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       hideCopied();
       hidePill();
+      if (underlineMode) setUnderlineMode(false);
     }
   });
 }
@@ -763,4 +812,139 @@ export function selectInRect(units, r) {
     return s.replace(/\s+/g, " ").trim();
   }).filter(Boolean).join("\n");
   return { text, parts };
+}
+
+/* ----------------------------------------------------------- Sottolinea */
+
+// PDF.js non ha l'editor «sottolinea»: si usa quello dell'evidenziatore con una striscia
+// sottile sotto ogni riga. Nel PDF salvato è un'evidenziazione rossa sottile, che ogni
+// lettore mostra come una sottolineatura.
+let underlineMode = false;
+
+export const isUnderlineMode = () => underlineMode;
+
+function setUnderlineMode(on) {
+  underlineMode = on;
+  els.viewerContainer.classList.toggle("underline-mode", on);
+  els.btnUnderline.setAttribute("aria-pressed", String(on));
+}
+
+/** Pulsante «Sottolinea»: sottolinea il testo già selezionato, altrimenti accende la modalità. */
+export function toggleUnderline() {
+  if (selectionInViewer().trim()) {
+    const pick = pickFromSelection();
+    window.getSelection().removeAllRanges();
+    hidePill();
+    underline(pick);
+    return;
+  }
+  setUnderlineMode(!underlineMode);
+  if (underlineMode) {
+    if (boxMode && boxKind === "foto") setBoxMode(false);
+    ui.toast("Seleziona il testo da sottolineare (anche col riquadro). Esc per finire.");
+  }
+}
+
+// Riquadri della selezione per pagina, in frazioni della pagina non ruotata (dall'alto),
+// come li calcola PDF.js per l'evidenziatore.
+function pickFromSelection() {
+  const sel = window.getSelection();
+  const out = new Map();
+  if (!sel || sel.isCollapsed) return { pages: [] };
+  const views = [];
+  for (let i = 0; i < pdfViewer.pagesCount; i++) {
+    const view = pdfViewer.getPageView(i);
+    const layer = view && view.div && view.div.querySelector(".textLayer");
+    if (layer) views.push({ view, layer, r: layer.getBoundingClientRect() });
+  }
+  for (let i = 0; i < sel.rangeCount; i++) {
+    for (const rc of sel.getRangeAt(i).getClientRects()) {
+      if (!rc.width || !rc.height) continue;
+      const cx = rc.x + rc.width / 2;
+      const cy = rc.y + rc.height / 2;
+      const v = views.find((p) => cx >= p.r.left && cx <= p.r.right && cy >= p.r.top && cy <= p.r.bottom);
+      if (!v || rc.height > v.r.height * 0.2) continue; // un riquadro grande è un contenitore, non testo
+      if (!out.has(v.view)) out.set(v.view, []);
+      out.get(v.view).push(toPageBox(v, rc));
+    }
+  }
+  const text = sel.toString();
+  return { pages: [...out].map(([view, boxes]) => ({ view, boxes, text })) };
+}
+
+function toPageBox({ layer, r }, { x, y, width: w, height: h }) {
+  const { left: lx, top: ly, width: W, height: H } = r;
+  switch (layer.getAttribute("data-main-rotation")) {
+    case "90": return { x: (y - ly) / H, y: 1 - (x + w - lx) / W, width: h / H, height: w / W };
+    case "180": return { x: 1 - (x + w - lx) / W, y: 1 - (y + h - ly) / H, width: w / W, height: h / H };
+    case "270": return { x: 1 - (y + h - ly) / H, y: (x - lx) / W, width: h / H, height: w / W };
+    default: return { x: (x - lx) / W, y: (y - ly) / H, width: w / W, height: h / H };
+  }
+}
+
+// I pezzi presi dal riquadro (coordinate PDF) nello stesso formato.
+function boxesFromParts(view, parts) {
+  const [vx0, , vx1, vy1] = view.pdfPage.view;
+  const W = vx1 - vx0;
+  const H = vy1 - view.pdfPage.view[1];
+  return parts.map((p) => ({ x: (p.x0 - vx0) / W, y: (vy1 - (p.yc + p.h / 2)) / H, width: (p.x1 - p.x0) / W, height: p.h / H }));
+}
+
+/** Aggiunge le sottolineature alle pagine. Ritorna quante pagine ha toccato. */
+export async function underline(pick) {
+  if (!pick || !pick.pages.length) {
+    ui.toast("Seleziona prima il testo da sottolineare.");
+    return 0;
+  }
+  const T = pdfjsLib.AnnotationEditorType;
+  if (pdfViewer.annotationEditorMode !== T.HIGHLIGHT) {
+    const changed = new Promise((resolve) => bus.on("annotationeditormodechanged", resolve, { once: true }));
+    pdfViewer.annotationEditorMode = { mode: T.HIGHLIGHT };
+    await changed;
+  }
+  let n = 0;
+  try {
+    for (const { view, boxes, text } of pick.pages) {
+      const layer = view.annotationEditorLayer && view.annotationEditorLayer.annotationEditorLayer;
+      if (!layer || !boxes.length) continue;
+      // La linea di base sta all'80% dell'altezza della riga: la striscia appena sotto.
+      const strips = boxes.map((b) => ({ x: b.x, y: b.y + b.height * 0.84, width: b.width, height: Math.max(b.height * 0.07, 0.0008) }));
+      const ed = layer.createAndAddNewEditor({ x: 0, y: 0 }, false, { methodOfCreation: "carta_sottolinea", boxes: strips, text });
+      if (!ed) continue;
+      n++;
+      // Una sottolineatura rimasta selezionata prenderebbe i parametri pensati per le note (il colore).
+      ed._uiManager.unselectAll();
+    }
+  } finally {
+    // In modalità «evidenzia» PDF.js evidenzierebbe da sé ogni selezione: si torna subito a quella normale.
+    pdfViewer.annotationEditorMode = { mode: T.NONE };
+  }
+  clearBox();
+  if (!n) ui.toast("Non sono riuscito a sottolineare: riprova con la pagina visibile.", "error");
+  return n;
+}
+
+/* --------------------------------------------------- Spiega con l'AI */
+
+async function explain(text, blob, view) {
+  if (!ui.spiega) return;
+  let contesto = "";
+  try {
+    if (view) {
+      const tc = await view.pdfPage.getTextContent();
+      contesto = tc.items.map((it) => (it.str || "") + (it.hasEOL ? "\n" : "")).join("");
+      const ocr = ocrText(view.id);
+      if (ocr) contesto += "\n" + ocr;
+    }
+  } catch {
+    contesto = "";
+  }
+  let png = null;
+  if (blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    png = btoa(bin);
+  }
+  ui.spiega({ testo: text, png, contesto, pagina: view ? view.id : null });
 }

@@ -208,6 +208,42 @@ export async function riassumi(name, pages, ui) {
   }
 }
 
+/**
+ * «Spiega»: un pezzo selezionato (testo) o un ritaglio (PNG in base64) va al compilatore,
+ * con il testo della pagina come contesto, e l'AI lo spiega.
+ * @returns {Promise<string>} la spiegazione in Markdown semplice
+ */
+export async function spiega(name, req, ui) {
+  const cfg = config();
+  if (!cfg) throw new Error("Per farti spiegare un pezzo collega prima il compilatore.");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  ui.busy(req.png ? "L'AI guarda il ritaglio… (di solito meno di un minuto)" : "L'AI legge il pezzo selezionato…",
+    { onCancel: () => ctrl.abort() });
+  try {
+    let res;
+    try {
+      res = await fetch(cfg.url + "/spiega", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+        body: JSON.stringify({ nome: name, testo: req.testo || "", png: req.png || "", contesto: req.contesto || "" }),
+        signal: ctrl.signal,
+        ...addressSpace(cfg.url),
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Spiegazione annullata.");
+      throw new Error("Compilatore non raggiungibile (serve la rete privata o quella dell'ufficio).");
+    }
+    const out = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error("Il compilatore non riconosce questo dispositivo: ricollegalo.");
+    if (!res.ok || !out.spiegazione) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+    return out.spiegazione;
+  } finally {
+    clearTimeout(timer);
+    ui.idle();
+  }
+}
+
 // Markdown semplice (grassetto, elenchi, paragrafi) in nodi DOM: niente HTML dall'esterno.
 function markdown(md) {
   const nodes = [];
@@ -234,9 +270,14 @@ function markdown(md) {
   return nodes;
 }
 
-export function renderSummary(panel, body, md, name) {
+export function renderSummary(panel, body, md, name, kind = "riassunto") {
+  const spiega = kind === "spiega";
+  const title = panel.querySelector("h2");
+  if (title) title.textContent = spiega ? "Spiegazione" : "Riassunto";
   body.replaceChildren(
-    h("p", { class: "fill-hint" }, `Riassunto di «${name}», scritto dall'AI: controlla i dati importanti sul documento.`),
+    h("p", { class: "fill-hint" }, spiega
+      ? `Spiegazione dell'AI di un pezzo di «${name}»: è un aiuto a capire, il testo che vale è quello del documento.`
+      : `Riassunto di «${name}», scritto dall'AI: controlla i dati importanti sul documento.`),
     h("div", { class: "riassunto" }, markdown(md)),
     h("div", { class: "copy-actions" },
       h("button", { class: "btn", type: "button", onclick: async (e) => {
@@ -246,7 +287,7 @@ export function renderSummary(panel, body, md, name) {
         } catch {
           e.target.textContent = "Non riesco a copiare";
         }
-      } }, "Copia il riassunto")));
+      } }, spiega ? "Copia la spiegazione" : "Copia il riassunto")));
   panel.hidden = false;
 }
 

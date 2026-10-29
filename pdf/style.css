@@ -979,3 +979,12 @@ body.anteprima .welcome .drop-card { display: none; }
 
   body:not([data-print]) > #printNotice { display: block !important; padding: 2cm; font: 16px system-ui, sans-serif; }
 }
+
+/* Pulsantino accanto alla selezione: Copia · Sottolinea · Spiega */
+.copy-pill { display: flex; gap: 0; padding: 0; overflow: hidden; }
+.copy-pill button { font: inherit; color: inherit; background: none; border: 0; padding: 6px 12px; cursor: pointer; }
+.copy-pill button + button { border-left: 1px solid rgba(255, 255, 255, 0.3); }
+.copy-pill button:hover { background: rgba(255, 255, 255, 0.15); }
+.copy-actions .btn[hidden] { display: none !important; }
+.viewer-container.underline-mode .textLayer { cursor: text; }
+.viewer-container.underline-mode .textLayer ::selection { background: rgba(164, 22, 26, 0.25); }

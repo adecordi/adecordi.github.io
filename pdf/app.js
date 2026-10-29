@@ -30,6 +30,9 @@ const els = {
   btnFind: $("btnFind"),
   btnBox: $("btnBox"),
   btnShot: $("btnShot"),
+  btnUnderline: $("btnUnderline"),
+  btnNote: $("btnNote"),
+  signBarText: $("signBarText"),
   btnOcr: $("btnOcr"),
   ocrMenu: $("ocrMenu"),
   btnSign: $("btnSign"),
@@ -116,7 +119,8 @@ function loadViewer() {
   if (!viewerLoading) {
     const workerPort = startWorker();
     viewerLoading = Promise.all([import("./viewer.js"), loadStylesheet("lib/pdfjs/pdf_viewer.min.css")]).then(([mod]) => {
-      mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, toast, h, workerPort });
+      mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, toast, h, workerPort,
+        spiega: explain, canExplain: () => !!compilatore.config() });
       V = mod;
       return mod;
     });
@@ -738,6 +742,7 @@ async function addSignature() {
   if (!file || doc !== current) return;
   try {
     await V.addImage(file);
+    els.signBarText.textContent = "Trascina la firma dove serve e ridimensionala dagli angoli.";
     els.signBar.hidden = false;
   } catch (e) {
     toast(`Non riesco a inserire la firma: ${e.message || e}`, "error");
@@ -747,6 +752,34 @@ async function addSignature() {
 function endSignature() {
   if (V) V.endImage();
   els.signBar.hidden = true;
+}
+
+async function addNote() {
+  if (!doc || !doc.pdf || !V) return;
+  endSignature();
+  V.setBoxMode(false);
+  try {
+    await V.startNote();
+    els.signBarText.textContent = "Clicca sulla pagina dove vuoi la nota e scrivi. Trascinala per spostarla.";
+    els.signBar.hidden = false;
+  } catch (e) {
+    toast(`Non riesco a inserire la nota: ${e.message || e}`, "error");
+  }
+}
+
+/** «Spiega con l'AI» di un pezzo selezionato o di un ritaglio (chiamato da testo.js). */
+async function explain(req) {
+  if (!doc) return;
+  const current = doc;
+  try {
+    const md = await compilatore.spiega(current.name, req, { busy, idle, toast });
+    if (doc !== current) return;
+    els.sigPanel.hidden = true;
+    els.fillPanel.hidden = true;
+    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name, "spiega");
+  } catch (e) {
+    toast(e.message || String(e), "error");
+  }
 }
 
 async function fillForm() {
@@ -777,7 +810,7 @@ async function summarize() {
     if (doc !== current) return;
     els.sigPanel.hidden = true;
     els.fillPanel.hidden = true;
-    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name);
+    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name, "riassunto");
   } catch (e) {
     toast(e.message || String(e), "error");
   }
@@ -913,6 +946,8 @@ els.sumClose.addEventListener("click", () => (els.sumPanel.hidden = true));
 els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
 els.btnBox.addEventListener("click", () => V && V.setBoxMode(!(V.isBoxMode() && !V.isShotMode())));
 els.btnShot.addEventListener("click", () => V && V.setShotMode(!V.isShotMode()));
+els.btnUnderline.addEventListener("click", () => V && V.toggleUnderline());
+els.btnNote.addEventListener("click", addNote);
 els.sigChip.addEventListener("click", () => toggleSigPanel());
 els.sigClose.addEventListener("click", () => toggleSigPanel(false));
 
@@ -976,6 +1011,7 @@ window.addEventListener("keydown", (e) => {
     if (!els.shareMenu.hidden) closeShareMenu();
     else if (!els.signBar.hidden) endSignature();
     else if (V && V.isBoxMode()) V.setBoxMode(false);
+    else if (!els.sumPanel.hidden) els.sumPanel.hidden = true;
     else if (!els.fillPanel.hidden) els.fillPanel.hidden = true;
     else if (!els.sigPanel.hidden) toggleSigPanel(false);
     else if (V) V.closeFind();

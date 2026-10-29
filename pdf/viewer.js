@@ -49,6 +49,7 @@ export function init(elements, hooks) {
     linkService,
     findController,
     imageResourcesPath: LIB + "images/",
+    annotationEditorHighlightColors: "rosso=#A4161A", // le sottolineature (vedi testo.underline)
   });
   linkService.setViewer(pdfViewer);
   testo.init(pdfjsLib, pdfViewer, eventBus, els, hooks);
@@ -218,6 +219,8 @@ export async function documentText(pdf) {
   return out;
 }
 export const isShotMode = testo.isShotMode;
+export const toggleUnderline = testo.toggleUnderline;
+export const isUnderlineMode = testo.isUnderlineMode;
 
 let imageGuard = null;
 
@@ -274,6 +277,26 @@ export function endImage() {
     pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
   }
 }
+
+/* --------------------------------------------------------------- Note */
+
+const NOTE_COLOR = "#A4161A";
+
+/**
+ * «Nota»: modalità «testo libero» di PDF.js. Un clic sulla pagina apre un riquadro dove si
+ * scrive; si sposta trascinandolo e «Salva» la scrive nel PDF. Si chiude con endImage().
+ */
+export async function startNote() {
+  const { AnnotationEditorType, AnnotationEditorParamsType } = pdfjsLib;
+  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.FREETEXT) {
+    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
+    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.FREETEXT };
+    await changed;
+  }
+  eventBus.dispatch("switchannotationeditorparams", { source: null, type: AnnotationEditorParamsType.FREETEXT_COLOR, value: NOTE_COLOR });
+}
+
+export const isNoteMode = () => pdfViewer.annotationEditorMode === pdfjsLib.AnnotationEditorType.FREETEXT;
 
 /* ------------------------------------------------------------ Ricerca */
 

@@ -50,6 +50,8 @@
       <symbol id="i-sum" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></symbol>
       <symbol id="i-shot" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
       <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></symbol>
+      <symbol id="i-underline" viewBox="0 0 24 24"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><path d="M4 20h16"/></symbol>
+      <symbol id="i-note" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/><path d="M8 12h6"/><path d="M8 16h8"/></symbol>
       <symbol id="i-wand" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></symbol>
     </defs>
   </svg>
@@ -100,6 +102,8 @@
         <button class="btn icon-only" id="btnFind" type="button" title="Cerca nel documento (Ctrl+F)" aria-label="Cerca nel documento" aria-controls="findbar"><svg class="icon"><use href="#i-search"/></svg></button>
         <button class="btn icon-only" id="btnBox" type="button" aria-pressed="false" title="Seleziona il testo con un riquadro e copialo (anche: Alt + trascina)" aria-label="Selezione a riquadro"><svg class="icon"><use href="#i-box"/></svg></button>
         <button class="btn icon-only" id="btnShot" type="button" aria-pressed="false" title="Screenshot: trascina un rettangolo (un clic = tutta la pagina); l'immagine va negli appunti" aria-label="Screenshot"><svg class="icon"><use href="#i-shot"/></svg></button>
+        <button class="btn icon-only" id="btnUnderline" type="button" aria-pressed="false" title="Sottolinea il testo selezionato (senza selezione: ogni testo che selezioni viene sottolineato, Esc per finire)" aria-label="Sottolinea"><svg class="icon"><use href="#i-underline"/></svg></button>
+        <button class="btn icon-only" id="btnNote" type="button" title="Inserisci una nota: clicca sulla pagina e scrivi" aria-label="Inserisci una nota"><svg class="icon"><use href="#i-note"/></svg></button>
         <div class="ocr-wrap">
           <button class="btn icon-only" id="btnOcr" type="button" title="Riconosci il testo della pagina (OCR)" aria-label="Riconosci il testo" aria-haspopup="menu" aria-expanded="false" aria-controls="ocrMenu"><svg class="icon"><use href="#i-ocr"/></svg></button>
           <div class="share-menu ocr-menu" id="ocrMenu" role="menu" hidden></div>
@@ -195,7 +199,7 @@
     </aside>
 
     <div class="sign-bar" id="signBar" hidden>
-      <span>Trascina la firma dove serve e ridimensionala dagli angoli.</span>
+      <span id="signBarText">Trascina la firma dove serve e ridimensionala dagli angoli.</span>
       <button class="btn primary" id="signDone" type="button">Fatto</button>
     </div>
   </main>
