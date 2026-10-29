@@ -328,6 +328,7 @@ body.dragging .drop-card { border-color: var(--accent); }
   color: var(--accent);
 }
 .drop-icon .icon { width: 32px; height: 32px; stroke-width: 1.6; }
+.drop-logo { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
 .drop-card h1 { margin: 4px 0 6px; font-size: 24px; letter-spacing: -0.01em; }
 .brand { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0 0 14px; }
 .brand strong { font-size: 15px; letter-spacing: 0.18em; color: var(--accent); }
@@ -613,7 +614,7 @@ body.dragging .drop-overlay { display: grid; }
 /* ------------------------------------------------------------ Outlook */
 
 body.outlook .drop-card { border-style: solid; text-align: left; padding: 22px 18px 16px; }
-body.outlook .drop-card .drop-icon { display: none; }
+body.outlook .drop-card .drop-icon, body.outlook .drop-card .drop-logo { display: none; }
 body.outlook .drop-card h1 { margin: 0 0 4px; font-size: 18px; }
 body.outlook .drop-card .drop-hint { margin: 0 0 12px; }
 body.outlook .welcome { place-items: start center; }
@@ -923,6 +924,29 @@ body.outlook .welcome { place-items: start center; }
 body.anteprima :is(#btnOpen, #btnInstall, .share-wrap, #btnWindow) { display: none !important; }
 body.anteprima .ocr-wrap { display: block !important; }
 body.anteprima .welcome .drop-card { display: none; }
+
+/* ---------------------------------------- Barra su una riga, solo icone */
+
+/* Le scritte dei pulsanti non si vedono più (restano nel suggerimento, «title»): così la barra
+   sta su una riga (Alessandro, 29/10/2026). Solo il telefono, troppo stretto, va su due. */
+.toolbar .btn-label { display: none; }
+.toolbar .btn:not(.sig-chip) { width: 34px; min-height: 34px; padding: 0; }
+.toolbar .btn:not(.primary) { border-color: transparent; background: transparent; }
+.toolbar .btn:not(.primary):hover:not(:disabled) { background: var(--surface-2); }
+@media (min-width: 761px) {
+  .toolbar { flex-wrap: nowrap; gap: 10px; }
+  .tb-file { flex: 1 1 0; }
+  .tb-view { gap: 8px; }
+  .tb-actions { gap: 2px; }
+}
+@media (max-width: 760px) {
+  .tb-view, .tb-view .tb-cluster { flex-wrap: wrap; justify-content: center; }
+  .page-box { white-space: nowrap; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  #zoomSelect { display: none; }
+  .tb-view { gap: 4px; }
+}
 
 /* ------------------------------------------------------------ Schermi piccoli */
 
