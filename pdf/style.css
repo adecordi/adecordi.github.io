@@ -109,7 +109,7 @@ body {
   color: var(--text);
   font: inherit;
   font-family: "Josefin Sans", system-ui, sans-serif;
-  font-weight: 400;
+  font-weight: 500; /* medio, come la scritta del logo */
   letter-spacing: 0.02em;
   cursor: pointer;
   white-space: nowrap;
