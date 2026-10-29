@@ -34,6 +34,10 @@ const els = {
   ocrMenu: $("ocrMenu"),
   btnSign: $("btnSign"),
   btnFill: $("btnFill"),
+  btnSum: $("btnSum"),
+  sumPanel: $("sumPanel"),
+  sumBody: $("sumBody"),
+  sumClose: $("sumClose"),
   fillPanel: $("fillPanel"),
   fillBody: $("fillBody"),
   fillClose: $("fillClose"),
@@ -228,6 +232,7 @@ async function closeDocument() {
   els.sigPanel.hidden = true;
   els.sigChip.hidden = true;
   els.fillPanel.hidden = true;
+  els.sumPanel.hidden = true;
   els.signBar.hidden = true;
   els.altView.replaceChildren();
   els.altView.hidden = true;
@@ -760,6 +765,24 @@ async function fillForm() {
   compilatore.renderReport(els.fillPanel, els.fillBody, result.report);
 }
 
+async function summarize() {
+  if (!doc) return;
+  const current = doc;
+  try {
+    let pages;
+    if (current.pdf) pages = await V.documentText(current.pdf);
+    else if (current.type.kind === "xml" || current.type.kind === "text") pages = [decodeText(current.data, current.type.kind)];
+    else throw new Error("Questo tipo di file non si può riassumere.");
+    const md = await compilatore.riassumi(current.name, pages, { busy, idle, toast });
+    if (doc !== current) return;
+    els.sigPanel.hidden = true;
+    els.fillPanel.hidden = true;
+    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name);
+  } catch (e) {
+    toast(e.message || String(e), "error");
+  }
+}
+
 /* --------------------------------------------------------- Condivisione */
 
 const ENVELOPE_MIME = { p7m: "application/pkcs7-mime", p7s: "application/pkcs7-signature", tsd: "application/timestamped-data" };
@@ -858,6 +881,7 @@ function updateControls() {
   els.btnDownload.disabled = !hasDoc;
   els.btnSign.disabled = !isPdf;
   els.btnFill.hidden = !(isPdf && compilatore.config());
+  els.btnSum.hidden = !(hasDoc && compilatore.config() && (isPdf || ["xml", "text"].includes(doc.type.kind)));
   els.btnShare.title = hasDoc ? "Condividi il documento" : "Condividi il lettore";
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
 }
@@ -884,6 +908,8 @@ els.btnPrint.addEventListener("click", printDocument);
 els.btnSign.addEventListener("click", addSignature);
 els.signDone.addEventListener("click", endSignature);
 els.btnFill.addEventListener("click", fillForm);
+els.btnSum.addEventListener("click", summarize);
+els.sumClose.addEventListener("click", () => (els.sumPanel.hidden = true));
 els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
 els.btnBox.addEventListener("click", () => V && V.setBoxMode(!(V.isBoxMode() && !V.isShotMode())));
 els.btnShot.addEventListener("click", () => V && V.setShotMode(!V.isShotMode()));

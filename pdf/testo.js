@@ -290,6 +290,13 @@ async function recognizeRemote(page, textUnits, level) {
 
 const LEVELS = { dispositivo: "sul dispositivo", server: "sul server", ai: "con l'AI" };
 
+/** Il testo riconosciuto con l'OCR di una pagina (stringa vuota se non c'è). */
+export function ocrText(pageNumber) {
+  const map = pages();
+  const d = map && map.get(pageNumber);
+  return d && Array.isArray(d.ocr) ? d.ocr.map((l) => l.text).join("\n") : "";
+}
+
 /** Riconosce il testo della pagina corrente al gradino scelto; il risultato sostituisce quello di prima. */
 export async function recognizePage(level) {
   const view = pdfViewer.getPageView(pdfViewer.currentPageNumber - 1);

@@ -117,9 +117,18 @@ const FAKE = "https://compilatore.prova";
 
   // --- Compilazione con un compilatore finto
   let request = null;
+  let riassunto = null;
   await page.route(FAKE + "/**", async (route) => {
     const req = route.request();
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" } });
+    if (req.url().endsWith("/riassumi")) {
+      riassunto = JSON.parse(req.postData());
+      return route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ riassunto: "**In breve**\nDocumento di prova.\n**Punti principali**\n- tre pagine (p. 1)\n- righe ripetute" }),
+      });
+    }
     request = { auth: req.headers().authorization, body: JSON.parse(req.postData()) };
     await route.fulfill({
       status: 200,
@@ -147,6 +156,14 @@ const FAKE = "https://compilatore.prova";
   const report = await page.textContent("#fillBody");
   check("riepilogo: compilati e da fare", report.includes("ROSSI") && report.includes("Da completare a mano") && report.includes("Firma"));
   await page.screenshot({ path: SHOTS + "42-compilato.png" });
+
+  // --- Riassumi (stesso compilatore finto)
+  check("«Riassumi» visibile", await page.isVisible("#btnSum"));
+  await page.click("#btnSum");
+  await page.waitForSelector("#sumPanel:not([hidden])", { timeout: 10000 });
+  check("al compilatore il testo di ogni pagina", riassunto && riassunto.pagine.length === 3 && riassunto.pagine[0].includes("Riga 1"));
+  check("riassunto in elenco, non a colonne", (await page.$$("#sumBody .riassunto li")).length === 2
+    && (await page.$eval("#sumBody .riassunto", (el) => getComputedStyle(el).display)) === "block");
 
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await browser.close();

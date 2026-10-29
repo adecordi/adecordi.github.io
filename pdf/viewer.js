@@ -203,6 +203,20 @@ function updateZoomControls(scale, preset) {
 export const setBoxMode = testo.setBoxMode;
 export const isBoxMode = testo.isBoxMode;
 export const setShotMode = testo.setShotMode;
+
+/** Il testo di ogni pagina: quello vero del PDF più quello riconosciuto con l'OCR. */
+export async function documentText(pdf) {
+  const out = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    let t = "";
+    for (const it of tc.items) t += (it.str || "") + (it.hasEOL ? "\n" : "");
+    const ocr = testo.ocrText(i);
+    out.push([t.trim(), ocr].filter(Boolean).join("\n"));
+  }
+  return out;
+}
 export const isShotMode = testo.isShotMode;
 
 let imageGuard = null;

@@ -889,6 +889,11 @@ body.outlook .welcome { place-items: start center; }
   resize: vertical;
 }
 .fill-summary { margin: 0 0 4px; font-weight: 600; }
+.riassunto { display: block; font-size: 14.5px; line-height: 1.55; }
+.riassunto p { margin: 10px 0 4px; }
+.riassunto ul { margin: 2px 0 6px; padding-left: 20px; }
+.riassunto li { margin: 3px 0; }
+#sumBody .copy-actions { margin-top: 14px; }
 .fill-hint { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
 #fillPanel h3 { margin: 16px 0 6px; font-size: 14px; }
 .fill-list { margin: 0; padding: 0; list-style: none; }

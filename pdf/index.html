@@ -47,6 +47,7 @@
       <symbol id="i-shield-unknown" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.85.8c0 1.6-2.45 2.4-2.45 2.4"/><path d="M12 16h.01"/></symbol>
       <symbol id="i-sign" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z"/></symbol>
       <symbol id="i-box" viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M9 3h1"/><path d="M14 3h1"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 9v1"/><path d="M3 9v1"/><path d="M3 14v1"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 21h1"/><path d="m12.5 12.5 3.7 8.7 1.3-3.8 3.8-1.3z"/></symbol>
+      <symbol id="i-sum" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></symbol>
       <symbol id="i-shot" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
       <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></symbol>
       <symbol id="i-wand" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></symbol>
@@ -108,6 +109,9 @@
 
     <div class="tb-group tb-actions">
       <button class="btn icon-only" id="btnWindow" type="button" hidden title="Apri in una finestra grande" aria-label="Apri in una finestra grande"><svg class="icon"><use href="#i-window"/></svg></button>
+      <button class="btn icon-only-mobile" id="btnSum" type="button" hidden title="Riassumi il documento con l'AI">
+        <svg class="icon"><use href="#i-sum"/></svg><span class="btn-label">Riassumi</span>
+      </button>
       <button class="btn icon-only-mobile" id="btnFill" type="button" hidden title="Compila il modulo con i tuoi dati">
         <svg class="icon"><use href="#i-wand"/></svg><span class="btn-label">Compila</span>
       </button>
@@ -180,6 +184,14 @@
         <button class="btn icon-only" id="fillClose" type="button" title="Chiudi" aria-label="Chiudi"><svg class="icon"><use href="#i-close"/></svg></button>
       </div>
       <div class="sig-panel-body" id="fillBody"></div>
+    </aside>
+
+    <aside class="sig-panel" id="sumPanel" role="dialog" aria-modal="false" aria-labelledby="sumTitle" hidden>
+      <div class="sig-panel-head">
+        <h2 id="sumTitle">Riassunto</h2>
+        <button class="btn icon-only" id="sumClose" type="button" title="Chiudi" aria-label="Chiudi"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sig-panel-body" id="sumBody"></div>
     </aside>
 
     <div class="sign-bar" id="signBar" hidden>
