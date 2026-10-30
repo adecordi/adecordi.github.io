@@ -109,9 +109,9 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-family: "Josefin Sans", system-ui, sans-serif;
-  font-weight: 500; /* medio, come la scritta del logo */
-  letter-spacing: 0.02em;
+  /* carattere di sistema, più leggibile nei pulsanti piccoli; Josefin Sans resta su logo, titoli e «Scegli un
+     file» (consiglio unanime delle altre AI, 30/10/2026) */
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
@@ -1215,3 +1215,15 @@ body.outlook .esempi { display: none; }
 .page[data-raddrizza] .canvasWrapper,
 .page[data-raddrizza] .annotationLayer[data-main-rotation="0"] { transform: rotate(var(--raddrizza)); transform-origin: 50% 50%; }
 .ocrLayer { transform: rotate(calc(var(--raddrizza, 0deg) + var(--ocr, 0deg))); transform-origin: 50% 50%; }
+
+/* Messaggi d'errore: restano finché non si toccano */
+.toast.error { cursor: pointer; }
+.toast.error::after { content: "  ✕"; opacity: 0.8; }
+
+/* Scansione storta: l'avviso sopra la pagina, con l'azione lì accanto */
+.avviso-storta { position: absolute; z-index: 30; top: 12px; left: 50%; transform: translateX(-50%); display: flex;
+  align-items: center; gap: 10px; max-width: calc(100% - 32px); padding: 8px 10px 8px 14px; border-radius: 12px;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow); border: 1px solid var(--border); font-size: 14px; }
+.avviso-storta[hidden] { display: none; }
+.avviso-storta .btn { min-height: 32px; }
+@media (max-width: 520px) { .avviso-storta { flex-wrap: wrap; justify-content: center; } }

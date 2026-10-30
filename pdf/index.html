@@ -13,6 +13,9 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=rossa">
   <link rel="stylesheet" href="style.css" id="appStyle">
   <style id="pageStyle"></style>
+  <!-- Solo gli script del sito (niente codice iniettato, per esempio da un file aperto); in rete solo il sito, la
+       cassaforte aziendale e i compilatori (tailnet https, ufficio, questo computer). 30/10/2026. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: https://appsforoffice.microsoft.com https://*.microsoft.com https://*.office.net https://*.office.com; worker-src 'self' blob:; frame-src 'self' blob: data: https://appsforoffice.microsoft.com https://*.office.com https://*.office365.com https://*.outlook.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob: https: http://192.168.1.238:8039 http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script type="module" src="app.js"></script>
   <link rel="modulepreload" href="p7m.js">
   <link rel="modulepreload" href="dom.js">
@@ -129,7 +132,7 @@
         <button class="btn icon-only-mobile" id="btnSum" type="button" hidden title="Riassumi il documento con l'AI">
         <svg class="icon"><use href="#i-sum"/></svg><span class="btn-label">Riassumi</span>
       </button>
-        <button class="btn icon-only-mobile" id="btnFill" type="button" hidden title="Compila il modulo con i tuoi dati">
+        <button class="btn primary icon-only-mobile" id="btnFill" type="button" hidden title="Compila il modulo con i tuoi dati">
         <svg class="icon"><use href="#i-wand"/></svg><span class="btn-label">Compila</span>
       </button>
       </div>
@@ -149,7 +152,7 @@
         <button class="btn icon-only-mobile" id="btnDownload" type="button" title="Salva il documento" disabled>
         <svg class="icon"><use href="#i-download"/></svg><span class="btn-label">Salva</span>
       </button>
-        <button class="btn primary" id="btnPrint" type="button" title="Stampa (Ctrl+P)" disabled>
+        <button class="btn icon-only-mobile" id="btnPrint" type="button" title="Stampa (Ctrl+P)" disabled>
         <svg class="icon"><use href="#i-print"/></svg><span class="btn-label">Stampa</span>
       </button>
       </div>

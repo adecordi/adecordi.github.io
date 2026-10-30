@@ -179,10 +179,12 @@ function bindPages() {
   });
   // «Raddrizza»: compare da solo quando la scansione aperta è storta (Alessandro, 30/10/2026).
   els.btnRaddrizza.addEventListener("click", async () => {
+    nascondiAvviso();
     if (await raddrizza()) els.btnRaddrizza.hidden = true;
   });
   eventBus.on("pagesinit", () => {
     els.btnRaddrizza.hidden = true;
+    nascondiAvviso();
     controllaStorta(pdfViewer.pdfDocument);
   });
 }
@@ -200,10 +202,30 @@ async function controllaStorta(doc) {
     const gradi = Math.abs(a).toLocaleString("it-IT", { maximumFractionDigits: 1 });
     els.btnRaddrizza.title = `Raddrizza la scansione (è storta di ${gradi}°)`;
     els.btnRaddrizza.hidden = false;
-    ui.toast(`La scansione è storta di ${gradi}°: premi «Raddrizza» per metterla dritta.`);
+    avvisoStorta(`La scansione è storta di ${gradi}°.`);
   } catch (e) {
     console.warn("controllo inclinazione:", e);
   }
+}
+
+// L'avviso sopra la pagina, con l'azione lì accanto (prima era un messaggio in basso che rimandava al tasto in alto).
+let avviso = null;
+function avvisoStorta(testo) {
+  if (!avviso) {
+    avviso = ui.h("div", { class: "avviso-storta", role: "status" },
+      ui.h("span", { class: "avviso-testo" }),
+      ui.h("button", { class: "btn primary", type: "button", onclick: async () => {
+        nascondiAvviso();
+        if (await raddrizza()) els.btnRaddrizza.hidden = true;
+      } }, "Raddrizza"),
+      ui.h("button", { class: "btn", type: "button", onclick: () => nascondiAvviso() }, "Lascia così"));
+    els.viewerContainer.parentElement.append(avviso);
+  }
+  avviso.querySelector(".avviso-testo").textContent = testo;
+  avviso.hidden = false;
+}
+function nascondiAvviso() {
+  if (avviso) avviso.hidden = true;
 }
 
 // Documenti già raddrizzati, con l'angolo di ogni pagina.

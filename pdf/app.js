@@ -145,7 +145,8 @@ function toast(message, kind = "info") {
   els.toast.className = "toast" + (kind === "error" ? " error" : "");
   els.toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (els.toast.hidden = true), kind === "error" ? 9000 : 4000);
+  // gli errori restano finché non si toccano: durante un'attesa lunga (compilazione) sparivano senza essere letti
+  if (kind !== "error") toastTimer = setTimeout(() => (els.toast.hidden = true), 4000);
 }
 els.toast.addEventListener("click", () => (els.toast.hidden = true));
 
