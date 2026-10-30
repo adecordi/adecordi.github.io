@@ -105,7 +105,23 @@ export function load(data, askPassword) {
   return task;
 }
 
-export function show(pdf) {
+/**
+ * @param {object} pdf
+ * @param {number[]} [angoli] inclinazioni già corrette in un documento precedente (il modulo prima di «Compila»):
+ *   il compilato si apre raddrizzato allo stesso modo, senza rimisurare
+ */
+export function show(pdf, angoli = null) {
+  if (angoli) {
+    eventBus.on("pagesinit", function applica() {
+      eventBus.off("pagesinit", applica);
+      if (pdfViewer.pdfDocument !== pdf) return;
+      angoli.forEach((a, i) => {
+        const v = pdfViewer.getPageView(i);
+        if (v && a) giraPagina(v, a);
+      });
+      raddrizzate.set(pdf, angoli);
+    });
+  }
   pdfViewer.setDocument(pdf);
   linkService.setDocument(pdf, null);
 }
@@ -145,8 +161,20 @@ function bindPages() {
   });
 }
 
-// Documenti già raddrizzati: il tasto torna a girare di 90°.
-const raddrizzate = new WeakSet();
+// Documenti già raddrizzati, con l'angolo di ogni pagina: il tasto torna a girare di 90°.
+const raddrizzate = new WeakMap();
+
+/** Gli angoli delle pagine raddrizzate del documento aperto (null se non è stato raddrizzato). */
+export function angoliRaddrizzati() {
+  const a = pdfViewer.pdfDocument && raddrizzate.get(pdfViewer.pdfDocument);
+  return a && a.some(Boolean) ? a : null;
+}
+
+// la pagina intera (immagine, testo selezionabile, campi) gira insieme, attorno al centro
+function giraPagina(v, a) {
+  v.div.style.transformOrigin = "50% 50%";
+  v.div.style.transform = `rotate(${a}deg)`;
+}
 
 async function raddrizza() {
   const doc = pdfViewer.pdfDocument;
@@ -156,6 +184,7 @@ async function raddrizza() {
   ui.busy("Cerco l'inclinazione della scansione…");
   let girate = 0;
   let angoloMostrato = 0;
+  const angoli = [];
   try {
     for (let i = 0; i < pdfViewer.pagesCount && i < 60; i++) {
       const v = pdfViewer.getPageView(i);
@@ -163,16 +192,15 @@ async function raddrizza() {
       if ((await testo.quotaImmagini(v)) < 0.5) continue;
       const a = await testo.angoloStorto(v);
       if (Math.abs(a) < 0.15) continue;
-      // la pagina intera (immagine, testo selezionabile, campi) gira insieme, attorno al centro
-      v.div.style.transformOrigin = "50% 50%";
-      v.div.style.transform = `rotate(${a}deg)`;
+      giraPagina(v, a);
+      angoli[i] = a;
       girate++;
       if (i === pdfViewer.currentPageNumber - 1) angoloMostrato = a;
     }
   } finally {
     ui.idle();
   }
-  raddrizzate.add(doc);
+  raddrizzate.set(doc, angoli);
   if (!girate) {
     ui.toast("La scansione è già dritta: giro la pagina di 90°.");
     return false;

@@ -1,0 +1,56 @@
+[
+ {
+  "file": "modulo-di-prova-con-campi.pdf",
+  "nome": "Domanda di contributo",
+  "tipo": "campi",
+  "nota": "52 dati: impresa, legale rappresentante, banca, certificazioni"
+ },
+ {
+  "file": "modulo-di-prova-scansionato.pdf",
+  "nome": "Domanda di contributo (scansione)",
+  "tipo": "scansione",
+  "nota": "La stessa domanda scansionata, storta di 0,6°"
+ },
+ {
+  "file": "scheda-fornitore-gdo.pdf",
+  "nome": "Scheda fornitore (GDO)",
+  "tipo": "scansione",
+  "nota": "La scheda che chiede una catena di supermercati, scansionata e storta di un grado"
+ },
+ {
+  "file": "domanda-ammissione-concorso.pdf",
+  "nome": "Iscrizione a un concorso enologico",
+  "tipo": "campi",
+  "nota": "Domanda di ammissione con la tabella dei vini iscritti"
+ },
+ {
+  "file": "long-term-supplier-declaration.pdf",
+  "nome": "Supplier's declaration (inglese)",
+  "tipo": "campi",
+  "nota": "Dichiarazione di origine a lungo termine, in inglese"
+ },
+ {
+  "file": "denuncia-mancato-pagamento.pdf",
+  "nome": "Denuncia di mancato pagamento",
+  "tipo": "scansione",
+  "nota": "Assicurazione crediti: scansionata e storta nell'altro verso; i dati del cliente non li sa"
+ },
+ {
+  "file": "questionario-qualifica-fornitore.pdf",
+  "nome": "Questionario di qualifica fornitore",
+  "tipo": "campi",
+  "nota": "Due pagine: certificazioni con numeri e scadenze, domande SÌ/NO"
+ },
+ {
+  "file": "dichiarazione-sostitutiva.pdf",
+  "nome": "Dichiarazione sostitutiva (D.P.R. 445)",
+  "tipo": "scansione",
+  "nota": "Carattere con le grazie, scansione appena storta: il legale rappresentante non è chi compila"
+ },
+ {
+  "file": "conto-corrente-dedicato.pdf",
+  "nome": "Conto corrente dedicato (L. 136/2010)",
+  "tipo": "campi",
+  "nota": "Coordinate bancarie e persone delegate a operare sul conto"
+ }
+]

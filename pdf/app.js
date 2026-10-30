@@ -300,7 +300,8 @@ async function showPdf(seq) {
   pdf.annotationStorage.onSetModified = () => {
     questo.modificato = true;
   };
-  viewer.show(pdf);
+  viewer.show(pdf, prossimiAngoli);
+  prossimiAngoli = null;
   els.viewerContainer.focus({ preventScroll: true });
 }
 
@@ -860,7 +861,11 @@ async function fillForm() {
   await mostraCompilato(result);
 }
 
+// Il modulo compilato si apre raddrizzato come lo era quello di partenza.
+let prossimiAngoli = null;
+
 async function mostraCompilato(result) {
+  prossimiAngoli = V ? V.angoliRaddrizzati() : null;
   await openBytes(result.bytes, result.name, null, { sostituisci: true });
   if (doc) doc.modificato = true;
   els.sigPanel.hidden = true;

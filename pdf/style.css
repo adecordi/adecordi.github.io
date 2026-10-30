@@ -1163,5 +1163,7 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 .esempi-titolo { margin: 0 0 10px; font-family: "Josefin Sans", system-ui, sans-serif; font-weight: 600; font-size: 15px; }
 .esempi-lista { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .esempi-lista .btn { background: var(--surface); }
+.esempi-lista .btn { font-size: 13px; padding: 6px 11px; }
+.esempi-nota .icon { width: 14px; height: 14px; vertical-align: -2px; }
 .esempi-nota { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
 body.outlook .esempi { display: none; }
