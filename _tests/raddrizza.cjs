@@ -71,6 +71,8 @@ async function pendenza(page, png) {
 
   // «Compila» apre il modulo compilato: deve restare raddrizzato (30/10/2026: tornava storto)
   await page.click("#btnFill");
+  // Alessandro senza cassaforte aziendale: «Usa quelli della VM»
+  await page.click(".cf-dialog button[value=salta]");
   await page.check("input[name=fillWho][value=azienda]");
   await page.click(".fill-dialog .btn.primary");
   await page.waitForSelector("#fillPanel:not([hidden])", { timeout: 15000 });

@@ -4,6 +4,7 @@
 // (…/pdf/#compilatore=<indirizzo>&chiave=<chiave>), e restano solo in questo browser.
 
 import { h, icon } from "./dom.js";
+import * as cassaforte from "./cassaforte.js";
 
 const STORE = "lettore-compilatore";
 const TIMEOUT = 180000;
@@ -145,7 +146,7 @@ function askInstructions(name) {
     d.textContent = collega && r.value === "azienda" ? "la Vinicola, con te come referente"
       : collega && r.value === "personale" ? "i tuoi dati privati" : d.dataset.testo;
   }
-  dialog.querySelector(".fill-miei").hidden = !collega;
+  dialog.querySelector(".fill-miei").hidden = false;
   const chi = dialog.querySelector("#fillChi");
   try {
     chi.value = localStorage.getItem(CHI) || "";
@@ -189,16 +190,13 @@ let ultima = null; // { file, notes, profilo }: per ricompilare con i dati trova
 export async function compila(file, ui) {
   const cfg = config();
   if (!cfg) return null;
-  // Un collega senza scheda: prima i suoi dati, poi il modulo.
-  if (cfg.collega) {
-    let miei;
-    try {
-      miei = await mieiDati();
-    } catch (e) {
-      ui.toast(e.message || String(e), "error");
-      return null;
-    }
-    if (!miei.testo && !(await apriMieiDati(miei))) return null;
+  // Prima i dati dalla cassaforte aziendale (per i colleghi è obbligatoria; Alessandro può ancora usare la VM).
+  let schede = null;
+  try {
+    schede = await preparaSchede(ui);
+  } catch (e) {
+    if (e.message !== "annullato") ui.toast(e.message || String(e), "error");
+    return null;
   }
   const scelta = await askInstructions(file.name);
   if (scelta === null) return null;
@@ -207,7 +205,7 @@ export async function compila(file, ui) {
   const notes = [chi && profilo !== "personale"
     ? `Chi compila il modulo: ${chi}. Nei campi «referente», «persona di contatto», «compilato da» o simili proponi questo nome.`
     : "", scelta.notes].filter(Boolean).join("\n");
-  ultima = { file, notes, profilo };
+  ultima = { file, notes, profilo, schede };
   return invia(file, notes, profilo, ui);
 }
 
@@ -258,7 +256,8 @@ async function invia(file, notes, profilo, ui) {
       res = await fetch(cfg.url + "/compila", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
-        body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes, profilo }),
+        body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes, profilo,
+          schede: ultima && ultima.schede ? ultima.schede : undefined }),
         signal: ctrl.signal,
         // Chrome ed Edge: da una pagina https un indirizzo http della rete locale si può chiamare
         // solo dichiarandolo (e con il permesso «rete locale»). Gli altri browser ignorano l'opzione.
@@ -421,7 +420,10 @@ export function renderReport(panel, body, report, azioni = {}) {
         h("button", { class: "btn primary", type: "button", onclick: async (e) => {
           e.currentTarget.disabled = true;
           try {
-            const r = await ricorda(inseriti.splice(0));
+            const dati = inseriti.splice(0);
+            const r = cassaforte.aperta()
+              ? await aggiungiAiMieiDati(dati, ultima ? ultima.file.name : "un modulo")
+              : await ricorda(dati);
             salva.replaceChildren(h("p", null, `✓ Salvati in cassaforte (${r.aggiunti}): li userò dalla prossima compilazione.`));
           } catch (err) {
             salva.replaceChildren(h("p", null, err.message || String(err)));
@@ -517,39 +519,188 @@ export function renderReport(panel, body, report, azioni = {}) {
   panel.hidden = false;
 }
 
-/* ------------------------------------------- «I miei dati» (colleghi) */
+/* ------------------------------- Cassaforte aziendale e «I miei dati» */
 
-// Le voci della scheda: una riga «- **Voce**: valore» ciascuna; le altre righe (anche i dati aggiunti dai moduli)
-// restano in «Altro».
+// Le voci della scheda personale: una riga «- **Voce**: valore» ciascuna; le altre righe (anche i dati aggiunti
+// dai moduli, o una scheda scritta a mano) restano in «Altro».
 const VOCI = ["Nome e cognome", "Ruolo in azienda", "E-mail", "Telefono", "Cellulare", "Codice fiscale",
   "Data di nascita", "Luogo di nascita", "Residenza", "Domicilio (se diverso)"];
 
-async function chiamaMieiDati(metodo, corpo) {
-  const cfg = config();
-  if (!cfg) throw new Error("Compilatore non collegato.");
-  let res;
-  try {
-    res = await fetch(cfg.url + "/miei-dati", {
-      method: metodo,
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
-      body: corpo ? JSON.stringify(corpo) : undefined,
-      ...addressSpace(cfg.url),
-    });
-  } catch {
-    throw new Error("Compilatore non raggiungibile: serve la rete dell'ufficio.");
+const campo = (etichetta, attr) => h("label", { class: "cf-campo" }, h("span", null, etichetta), h("input", attr));
+
+let accessoDlg = null;
+
+/**
+ * Entra nella cassaforte aziendale (e-mail, password, codice a 6 cifre se serve).
+ * «puoSaltare»: Alessandro, finché non ha copiato i suoi dati, può usare ancora quelli della VM.
+ * Ritorna true (dentro), "salta" o false (annullato).
+ */
+async function accediCassaforte(puoSaltare) {
+  if (cassaforte.aperta()) return true;
+  if (!accessoDlg) {
+    accessoDlg = h("dialog", { class: "modal cf-dialog", "aria-labelledby": "cfTitle" },
+      h("form", { method: "dialog" },
+        h("h2", { id: "cfTitle" }, icon("lock"), " Cassaforte aziendale"),
+        h("p", { class: "fill-hint" }, "I dati per i moduli stanno nella cassaforte aziendale (cassaforte.it.fo). "
+          + "Entra con le tue credenziali: la password non esce da questo dispositivo."),
+        campo("E-mail", { type: "email", name: "email", autocomplete: "username", required: true }),
+        campo("Password della cassaforte", { type: "password", name: "password", autocomplete: "current-password", required: true }),
+        h("div", { class: "cf-codice", hidden: true },
+          campo("Codice a 6 cifre dell'app di autenticazione", { type: "text", name: "codice", inputmode: "numeric", autocomplete: "one-time-code", maxlength: 8 })),
+        h("p", { class: "cf-errore", role: "alert" }),
+        h("div", { class: "modal-actions" },
+          h("button", { class: "btn", type: "submit", value: "cancel", formnovalidate: true }, "Annulla"),
+          h("button", { class: "btn cf-salta", type: "submit", value: "salta", formnovalidate: true }, "Usa quelli della VM"),
+          h("button", { class: "btn primary", type: "submit", value: "ok" }, "Entra"))));
+    document.body.append(accessoDlg);
   }
-  const out = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
-  return out;
+  const f = accessoDlg.querySelector("form");
+  const errore = accessoDlg.querySelector(".cf-errore");
+  const codiceBox = accessoDlg.querySelector(".cf-codice");
+  f.email.value = cassaforte.emailRicordata();
+  f.password.value = "";
+  f.codice.value = "";
+  codiceBox.hidden = true;
+  errore.textContent = "";
+  accessoDlg.querySelector(".cf-salta").hidden = !puoSaltare;
+  return new Promise((resolve) => {
+    const chiudi = (v) => {
+      f.removeEventListener("submit", invio);
+      f.password.value = "";
+      if (accessoDlg.open) accessoDlg.close();
+      resolve(v);
+    };
+    const invio = async (e) => {
+      const azione = e.submitter ? e.submitter.value : "ok";
+      if (azione !== "ok") return chiudi(azione === "salta" ? "salta" : false);
+      e.preventDefault();
+      const bottone = e.submitter;
+      bottone.disabled = true;
+      errore.textContent = "Apro la cassaforte… (qualche secondo)";
+      try {
+        const esito = await cassaforte.entra(f.email.value, f.password.value, codiceBox.hidden ? "" : f.codice.value);
+        if (esito === "serve-codice") {
+          codiceBox.hidden = false;
+          errore.textContent = "Il tuo account chiede anche il codice dell'app di autenticazione.";
+          f.codice.focus();
+        } else {
+          chiudi(true);
+        }
+      } catch (err) {
+        errore.textContent = err.message || String(err);
+      } finally {
+        bottone.disabled = false;
+      }
+    };
+    f.addEventListener("submit", invio);
+    accessoDlg.showModal();
+    (f.email.value ? f.password : f.email).focus();
+  });
 }
-const mieiDati = () => chiamaMieiDati("GET");
+
+let raccoltaDlg = null;
+
+// La raccolta col nome di chi compila; se non si capisce quale è, la sceglie lui una volta.
+async function raccoltaPersonale() {
+  const trovata = cassaforte.raccoltaPersonale();
+  if (trovata) return trovata;
+  const scelte = cassaforte.raccolteScrivibili();
+  if (!scelte.length) throw new Error("Nella cassaforte aziendale non hai una raccolta dove scrivere: chiedi ad Alessandro.");
+  if (!raccoltaDlg) {
+    raccoltaDlg = h("dialog", { class: "modal cf-dialog" },
+      h("form", { method: "dialog" },
+        h("h2", null, "Qual è la tua raccolta?"),
+        h("p", { class: "fill-hint" }, "Nella cassaforte aziendale scegli la raccolta col tuo nome: lì metto i tuoi dati per i moduli."),
+        h("select", { name: "raccolta", class: "cf-select" }),
+        h("div", { class: "modal-actions" },
+          h("button", { class: "btn", type: "submit", value: "cancel" }, "Annulla"),
+          h("button", { class: "btn primary", type: "submit", value: "ok" }, "Usa questa"))));
+    document.body.append(raccoltaDlg);
+  }
+  const sel = raccoltaDlg.querySelector("select");
+  sel.replaceChildren(...scelte.map((c) => h("option", { value: c.id }, c.nome)));
+  raccoltaDlg.returnValue = "";
+  const ok = await new Promise((resolve) => {
+    raccoltaDlg.addEventListener("close", () => resolve(raccoltaDlg.returnValue === "ok"), { once: true });
+    raccoltaDlg.showModal();
+  });
+  if (!ok) return null;
+  cassaforte.scegliRaccolta(sel.value);
+  return sel.value;
+}
+
+// Solo Alessandro: le schede della cassaforte della VM, per copiarle in quella aziendale.
+async function esportaSchede() {
+  const cfg = config();
+  try {
+    const res = await fetch(cfg.url + "/esporta-schede", { headers: { Authorization: "Bearer " + cfg.chiave }, ...addressSpace(cfg.url) });
+    return res.ok ? await res.json() : { persona: "", azienda: "" };
+  } catch {
+    return { persona: "", azienda: "" };
+  }
+}
+
+/**
+ * Le schede per compilare, dalla cassaforte aziendale: {persona, azienda}. null = senza cassaforte (solo Alessandro,
+ * con «Usa quelli della VM»). Se manca la sua voce, chiede prima i suoi dati; Alessandro (proprietario) la prima volta
+ * copia anche quelli della Vinicola dalla VM.
+ */
+async function preparaSchede(ui) {
+  const cfg = config();
+  const entrato = await accediCassaforte(!cfg.collega);
+  if (entrato === "salta") return null;
+  if (!entrato) throw new Error("annullato");
+  ui.busy("Apro i dati nella cassaforte aziendale…");
+  let schede;
+  try {
+    const raccolta = await raccoltaPersonale();
+    if (!raccolta) throw new Error("annullato");
+    schede = await cassaforte.leggiSchede();
+    const vm = !cfg.collega && (!schede.persona || !schede.azienda) ? await esportaSchede() : null;
+    if (!schede.azienda && vm && vm.azienda && cassaforte.proprietario()) {
+      ui.idle();
+      if (confirm("Nella cassaforte aziendale non ci sono ancora i dati della Vinicola per i moduli.\n\n"
+        + "Li copio da quelli della VM? Ti chiedo poi in quale raccolta (scegli quella che vedono tutti).")) {
+        const dove = await sceltaRaccolta("Dove metto i dati della Vinicola? (la raccolta che vedono tutti)");
+        if (dove) {
+          ui.busy("Copio i dati della Vinicola nella cassaforte aziendale…");
+          await cassaforte.scriviVoce(cassaforte.VOCE_AZIENDA, vm.azienda, dove);
+          schede = await cassaforte.leggiSchede();
+        }
+      }
+    }
+    if (!schede.persona) {
+      ui.idle();
+      if (!(await apriMieiDati(vm ? vm.persona : ""))) throw new Error("annullato");
+      schede = await cassaforte.leggiSchede();
+    }
+  } finally {
+    ui.idle();
+  }
+  return { persona: schede.persona, azienda: schede.azienda };
+}
+
+// Una raccolta qualsiasi fra quelle dove si può scrivere (per i dati della Vinicola).
+async function sceltaRaccolta(titolo) {
+  const scelte = cassaforte.raccolteScrivibili();
+  const elenco = scelte.map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
+  const n = parseInt(prompt(`${titolo}\n\n${elenco}\n\nScrivi il numero:`, "") || "", 10);
+  return scelte[n - 1] ? scelte[n - 1].id : null;
+}
 
 let mieiDlg = null;
 
-/** La scheda del collega da compilare o correggere; vero se salvata. */
-export async function apriMieiDati(miei = null) {
+/** I dati di chi compila, nella sua raccolta della cassaforte aziendale; vero se salvati. */
+export async function apriMieiDati(proposta = null) {
+  if (!config()) return false;
+  const entrato = await accediCassaforte(false);
+  if (entrato !== true) return false;
+  let raccolta;
+  let testo = "";
   try {
-    miei = miei || await mieiDati();
+    raccolta = await raccoltaPersonale();
+    if (!raccolta) return false;
+    testo = (await cassaforte.leggiSchede()).persona || proposta || "";
   } catch (e) {
     alert(e.message || String(e));
     return false;
@@ -559,47 +710,64 @@ export async function apriMieiDati(miei = null) {
       h("form", { method: "dialog" },
         h("h2", { id: "mieiTitle" }, "I miei dati"),
         h("p", { class: "fill-hint" }, "Servono per compilare i moduli dove ci sei tu (referente, dichiarante...). "
-          + "Restano nella cassaforte cifrata del compilatore della Vinicola e vanno all'AI solo quando compili tu. "
-          + "Scrivi solo quello che vuoi: i campi vuoti restano vuoti nei moduli."),
+          + "Stanno nella tua raccolta della cassaforte aziendale, che vedono anche Alessandro e Giulia, e vanno all'AI "
+          + "solo quando compili. Scrivi solo quello che vuoi: i campi vuoti restano vuoti nei moduli."),
         h("div", { class: "miei-campi" }, VOCI.map((v, i) =>
           h("label", null, h("span", null, v), h("input", { type: "text", "data-voce": v, autocomplete: "off", required: i === 0 })))),
-        h("label", { class: "miei-altro" }, h("span", null, "Altro (un dato per riga)"), h("textarea", { rows: 4 })),
+        h("label", { class: "miei-altro" }, h("span", null, "Altro (un dato per riga)"), h("textarea", { rows: 6 })),
         h("div", { class: "modal-actions" },
+          h("button", { class: "btn subtle cf-esci", type: "submit", value: "esci", formnovalidate: true }, "Esci dalla cassaforte"),
           h("button", { class: "btn", type: "submit", value: "cancel", formnovalidate: true }, "Annulla"),
           h("button", { class: "btn primary", type: "submit", value: "ok" }, "Salva"))));
     document.body.append(mieiDlg);
   }
   const valori = {};
   const altro = [];
-  for (const riga of String(miei.testo || "").split("\n")) {
+  for (const riga of String(testo).split("\n")) {
     const m = /^- \*\*(.+?)\*\*: (.*)$/.exec(riga.trim());
     if (m && VOCI.includes(m[1])) valori[m[1]] = m[2];
-    else if (riga.trim() && !riga.startsWith("# ")) altro.push(riga.replace(/^- /, ""));
+    else if (riga.trim() && !/^# Dati di /.test(riga)) altro.push(riga.replace(/^- /, ""));
   }
   for (const i of mieiDlg.querySelectorAll("input[data-voce]")) i.value = valori[i.dataset.voce] || "";
-  if (!valori["Nome e cognome"] && miei.nome) mieiDlg.querySelector("input[data-voce]").value = miei.nome;
+  if (!valori["Nome e cognome"]) mieiDlg.querySelector("input[data-voce]").value = cassaforte.nomeUtente();
   mieiDlg.querySelector("textarea").value = altro.join("\n");
   mieiDlg.returnValue = "";
-  const ok = await new Promise((resolve) => {
-    mieiDlg.addEventListener("close", () => resolve(mieiDlg.returnValue === "ok"), { once: true });
+  const scelta = await new Promise((resolve) => {
+    mieiDlg.addEventListener("close", () => resolve(mieiDlg.returnValue), { once: true });
     mieiDlg.showModal();
   });
-  if (!ok) return false;
+  if (scelta === "esci") {
+    cassaforte.esci();
+    return false;
+  }
+  if (scelta !== "ok") return false;
+  const nome = mieiDlg.querySelector("input[data-voce]").value.trim();
   const righe = [...mieiDlg.querySelectorAll("input[data-voce]")]
     .filter((i) => i.value.trim()).map((i) => `- **${i.dataset.voce}**: ${i.value.trim()}`);
-  const extra = mieiDlg.querySelector("textarea").value.split("\n").map((r) => r.trim()).filter(Boolean).map((r) => `- ${r}`);
-  const testo = [`# Dati di ${miei.nome || "collega"} (scritti in C.A.R.T.A.)`, ...righe, ...extra].join("\n");
+  const extra = mieiDlg.querySelector("textarea").value.split("\n").map((r) => r.trimEnd()).filter((r) => r.trim())
+    .map((r) => (/^(#|- |\s)/.test(r) ? r : `- ${r}`));
+  const nuovo = [`# Dati di ${nome || "chi compila"} per i moduli`, ...righe, ...extra].join("\n");
   try {
-    await chiamaMieiDati("POST", { testo });
+    await cassaforte.scriviVoce(cassaforte.VOCE_PERSONA, nuovo, raccolta);
   } catch (e) {
     alert(e.message || String(e));
     return false;
   }
   try {
-    const nome = valori["Nome e cognome"] || mieiDlg.querySelector("input[data-voce]").value.trim();
     if (nome && !localStorage.getItem(CHI)) localStorage.setItem(CHI, nome);
   } catch { /* niente */ }
   return true;
+}
+
+// «Sì, salvali»: i dati inseriti a mano vanno in fondo alla voce personale della cassaforte aziendale.
+async function aggiungiAiMieiDati(dati, modulo) {
+  const raccolta = await raccoltaPersonale();
+  if (!raccolta) throw new Error("Dati non salvati: manca la tua raccolta.");
+  const ora = (await cassaforte.leggiSchede()).persona || "";
+  const oggi = new Date().toLocaleDateString("it-IT");
+  const righe = dati.map((d) => `- **${d.campo}**: ${d.valore} (da «${modulo}», ${oggi})`);
+  await cassaforte.scriviVoce(cassaforte.VOCE_PERSONA, [ora.trimEnd(), ...righe].filter(Boolean).join("\n"), raccolta);
+  return { aggiunti: dati.length };
 }
 
 /** I dati inseriti a mano, in cassaforte per la prossima compilazione (solo dopo il «Sì» dell'utente). */

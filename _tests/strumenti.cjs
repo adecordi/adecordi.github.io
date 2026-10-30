@@ -173,6 +173,8 @@ const FAKE = "https://compilatore.prova";
   await page.waitForSelector(".page canvas");
   check("«Compila» visibile dopo il collegamento", await page.isVisible("#btnFill"));
   await page.click("#btnFill");
+  // Alessandro senza cassaforte aziendale: «Usa quelli della VM»
+  await page.click(".cf-dialog button[value=salta]");
   check("«A nome di chi?» obbligatorio", await page.$eval("input[name=fillWho]", (i) => i.required));
   await page.check("input[name=fillWho][value=azienda]");
   await page.fill("#fillNotes", "per la Vinicola");

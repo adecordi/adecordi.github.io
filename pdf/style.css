@@ -1187,3 +1187,12 @@ body.outlook .esempi { display: none; }
   background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
 @media (max-width: 520px) { .miei-campi { grid-template-columns: 1fr; } }
 .fill-miei { margin-top: 6px; }
+
+/* Accesso alla cassaforte aziendale */
+.cf-dialog { width: min(440px, calc(100vw - 32px)); }
+.cf-campo { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; font-size: 13px; }
+.cf-campo input, .cf-select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 15px; width: 100%; }
+.cf-errore { min-height: 1.3em; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.cf-dialog .modal-actions, .miei-dialog .modal-actions { flex-wrap: wrap; }
+.miei-dialog .cf-esci { margin-right: auto; }
