@@ -1196,3 +1196,8 @@ body.outlook .esempi { display: none; }
 .cf-errore { min-height: 1.3em; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 .cf-dialog .modal-actions, .miei-dialog .modal-actions { flex-wrap: wrap; }
 .miei-dialog .cf-esci { margin-right: auto; }
+
+/* Dati delicati della Vinicola cambiati nella cassaforte aziendale */
+.fill-avviso { margin: 8px 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid #A4161A;
+  background: color-mix(in srgb, #A4161A 10%, var(--surface)); color: var(--text); font-size: 14px; }
+.fill-avviso p { margin: 6px 0 0; }

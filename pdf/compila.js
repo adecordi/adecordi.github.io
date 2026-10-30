@@ -508,6 +508,9 @@ export function renderReport(panel, body, report, azioni = {}) {
     h("p", { class: "fill-summary" },
       compilati.length ? `${compilati.length} ${compilati.length === 1 ? "campo compilato" : "campi compilati"}` : "Nessun campo compilato",
       report.metodo === "posizioni" ? " (modulo senza campi: ho aggiunto i campi sopra la pagina)." : "."),
+    // dati delicati della Vinicola cambiati nella cassaforte aziendale (vedi sorveglianza.py del compilatore)
+    (report.avvisi || []).length ? h("div", { class: "fill-avviso", role: "alert" },
+      h("strong", null, "⚠️ Attenzione"), ...report.avvisi.map((a) => h("p", null, a))) : null,
     h("p", { class: "fill-hint" }, "In blu, a macchina da scrivere, quello che ho scritto io: puoi correggerlo cliccandoci. Gli spazi vuoti e i quadratini si compilano cliccandoci sopra."),
     mancanti.length ? h("section", null, h("h3", null, "Da completare"),
       h("p", { class: "fill-hint" }, "Scrivilo tu o lo cerco io nei Files Comuni, su OneDrive e nella posta: con «Inserisci» va subito nel modulo."),

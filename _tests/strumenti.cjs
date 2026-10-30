@@ -158,6 +158,7 @@ const FAKE = "https://compilatore.prova";
       body: JSON.stringify({
         pdf: fs.readFileSync(MODULO).toString("base64"),
         metodo: "campi",
+        avvisi: ["IBAN cambiato nella cassaforte aziendale (visto il 30/10/2026): prima IT60…3456 → ora IT60…9999."],
         compilati: [{ campo: "Cognome", valore: "ROSSI", pagina: 1 }],
         mancanti: [{ campo: "Firma", motivo: "da fare a mano" }, { campo: "Numero REA", motivo: "non nelle fonti" },
           { campo: "Banca", motivo: "non nelle fonti", pdf_campo: "p1_c06_Banca", tipo: "testo" },
@@ -184,6 +185,7 @@ const FAKE = "https://compilatore.prova";
   check("si apre il modulo compilato", (await page.textContent("#docTitle")) === "doc (compilato).pdf");
   // Dati mancanti: «Firma ora» per la firma, «Lo scrivo io» / «Cercalo» per il resto
   check("firma: «Firma ora»", (await page.textContent("#fillBody")).includes("Firma ora"));
+  check("avviso sui dati della Vinicola cambiati", (await page.textContent("#fillBody .fill-avviso")).includes("IBAN cambiato"));
   const voceRea = page.locator("#fillBody li", { hasText: "Numero REA" });
   await voceRea.locator("button", { hasText: "Cercalo" }).click();
   await voceRea.locator(".fill-value").waitFor({ timeout: 10000 });
