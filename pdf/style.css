@@ -894,7 +894,7 @@ body.outlook .welcome { place-items: start center; }
 .fill-dialog { width: min(520px, calc(100vw - 32px)); }
 .modal p.fill-doc { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 .fill-label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
-.fill-dialog textarea {
+.fill-dialog textarea, .fill-dialog .fill-chi {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -905,6 +905,7 @@ body.outlook .welcome { place-items: start center; }
   font-size: 14px;
   resize: vertical;
 }
+.fill-dialog .fill-chi { margin-bottom: 14px; resize: none; }
 .fill-summary { margin: 0 0 4px; font-weight: 600; }
 .riassunto { display: block; font-size: 14.5px; line-height: 1.55; }
 .riassunto p { margin: 10px 0 4px; }

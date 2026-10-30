@@ -103,6 +103,7 @@ export function unlink() {
 }
 
 let dialog = null;
+const CHI = "lettore-chi-compila";
 
 // Chiede le istruzioni facoltative; null se annullato.
 function askInstructions(name) {
@@ -121,6 +122,9 @@ function askInstructions(name) {
             h("label", { class: "fill-who-opt" },
               h("input", { type: "radio", name: "fillWho", value: v, required: true }),
               h("span", null, h("strong", null, t), h("small", null, d))))),
+        // Chi sta compilando: per l'azienda è il referente da proporre (Alessandro, 30/10/2026).
+        h("label", { class: "fill-label", for: "fillChi" }, "Chi compila"),
+        h("input", { id: "fillChi", class: "fill-chi", type: "text", autocomplete: "name", placeholder: "Nome e cognome" }),
         h("label", { class: "fill-label", for: "fillNotes" }, "Istruzioni (facoltative)"),
         h("textarea", { id: "fillNotes", rows: 3, placeholder: "Es.: come recapito usa la PEC; l'IBAN è quello di Intesa" }),
         h("div", { class: "modal-actions" },
@@ -129,11 +133,21 @@ function askInstructions(name) {
     document.body.append(dialog);
   }
   dialog.querySelector(".fill-doc").textContent = name;
+  const chi = dialog.querySelector("#fillChi");
+  try {
+    chi.value = localStorage.getItem(CHI) || "";
+  } catch { /* senza memoria si riscrive */ }
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => {
       const who = dialog.querySelector("input[name=fillWho]:checked");
+      const nomeChi = chi.value.trim();
+      if (dialog.returnValue === "ok") {
+        try {
+          localStorage.setItem(CHI, nomeChi);
+        } catch { /* niente da fare */ }
+      }
       resolve(dialog.returnValue === "ok"
-        ? { notes: dialog.querySelector("#fillNotes").value.trim(), profilo: who ? who.value : null } : null);
+        ? { notes: dialog.querySelector("#fillNotes").value.trim(), profilo: who ? who.value : null, chi: nomeChi } : null);
     }, { once: true });
     dialog.returnValue = "";
     dialog.showModal();
@@ -164,7 +178,11 @@ export async function compila(file, ui) {
   if (!cfg) return null;
   const scelta = await askInstructions(file.name);
   if (scelta === null) return null;
-  const { notes, profilo } = scelta;
+  const { profilo, chi } = scelta;
+  // Per l'azienda chi compila è il referente o la persona di contatto da proporre.
+  const notes = [chi && profilo !== "personale"
+    ? `Chi compila il modulo: ${chi}. Nei campi «referente», «persona di contatto», «compilato da» o simili proponi questo nome.`
+    : "", scelta.notes].filter(Boolean).join("\n");
   ultima = { file, notes, profilo };
   return invia(file, notes, profilo, ui);
 }
