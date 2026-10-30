@@ -51,9 +51,9 @@ export function linkFromHash() {
     if (prima && prima.url !== nuovo
       && !confirm(`Questo link collega C.A.R.T.A. a un altro compilatore:\n${u.host}\n\nAl posto di ${new URL(prima.url).host}. `
         + "I documenti da compilare, riassumere o spiegare andranno lì. Continuo?")) return false;
-    // «solo=azienda»: il link dei colleghi, che compilano solo a nome della Vinicola
-    const solo = p.get("solo") === "azienda" ? "azienda" : null;
-    localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave, solo }));
+    // «solo=collega»: il link di un collega, che compila per la Vinicola o per sé, con la SUA scheda
+    const collega = p.get("solo") === "collega" || p.get("solo") === "azienda";
+    localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave, collega }));
     return true;
   } catch {
     return false;
@@ -123,7 +123,9 @@ function askInstructions(name) {
            ["azienda_io", "Azienda, firmo io", "la Vinicola, con me come firmatario"]].map(([v, t, d]) =>
             h("label", { class: "fill-who-opt" },
               h("input", { type: "radio", name: "fillWho", value: v, required: true }),
-              h("span", null, h("strong", null, t), h("small", null, d))))),
+              h("span", null, h("strong", null, t), h("small", { "data-testo": d }, d)))),
+          h("button", { class: "btn subtle fill-miei", type: "button", hidden: true,
+            onclick: () => apriMieiDati() }, "I miei dati")),
         // Chi sta compilando: per l'azienda è il referente da proporre (Alessandro, 30/10/2026).
         h("label", { class: "fill-label", for: "fillChi" }, "Chi compila"),
         h("input", { id: "fillChi", class: "fill-chi", type: "text", autocomplete: "name", placeholder: "Nome e cognome" }),
@@ -135,12 +137,15 @@ function askInstructions(name) {
     document.body.append(dialog);
   }
   dialog.querySelector(".fill-doc").textContent = name;
-  // Colleghi: solo «Azienda», già scelta.
-  const soloAzienda = (config() || {}).solo === "azienda";
+  // Colleghi: «Azienda» (con sé come referente) o «Personale» (la propria scheda); niente «firmo io».
+  const collega = !!(config() || {}).collega;
   for (const r of dialog.querySelectorAll("input[name=fillWho]")) {
-    r.closest("label").hidden = soloAzienda && r.value !== "azienda";
-    if (soloAzienda) r.checked = r.value === "azienda";
+    r.closest("label").hidden = collega && r.value === "azienda_io";
+    const d = r.closest("label").querySelector("small");
+    d.textContent = collega && r.value === "azienda" ? "la Vinicola, con te come referente"
+      : collega && r.value === "personale" ? "i tuoi dati privati" : d.dataset.testo;
   }
+  dialog.querySelector(".fill-miei").hidden = !collega;
   const chi = dialog.querySelector("#fillChi");
   try {
     chi.value = localStorage.getItem(CHI) || "";
@@ -184,6 +189,17 @@ let ultima = null; // { file, notes, profilo }: per ricompilare con i dati trova
 export async function compila(file, ui) {
   const cfg = config();
   if (!cfg) return null;
+  // Un collega senza scheda: prima i suoi dati, poi il modulo.
+  if (cfg.collega) {
+    let miei;
+    try {
+      miei = await mieiDati();
+    } catch (e) {
+      ui.toast(e.message || String(e), "error");
+      return null;
+    }
+    if (!miei.testo && !(await apriMieiDati(miei))) return null;
+  }
   const scelta = await askInstructions(file.name);
   if (scelta === null) return null;
   const { profilo, chi } = scelta;
@@ -394,7 +410,7 @@ export function renderReport(panel, body, report, azioni = {}) {
   const inseriti = [];
   const salva = h("div", { class: "fill-salva", hidden: true });
   const chiediSalva = () => {
-    if (!inseriti.length || report.collega) { // i colleghi non salvano in cassaforte
+    if (!inseriti.length) {
       salva.hidden = true;
       return;
     }
@@ -499,6 +515,91 @@ export function renderReport(panel, body, report, azioni = {}) {
         h("li", null, h("strong", null, c.campo), h("span", null, String(c.valore)),
           c.pagina ? h("em", null, `pag. ${c.pagina}`) : null)))) : null);
   panel.hidden = false;
+}
+
+/* ------------------------------------------- «I miei dati» (colleghi) */
+
+// Le voci della scheda: una riga «- **Voce**: valore» ciascuna; le altre righe (anche i dati aggiunti dai moduli)
+// restano in «Altro».
+const VOCI = ["Nome e cognome", "Ruolo in azienda", "E-mail", "Telefono", "Cellulare", "Codice fiscale",
+  "Data di nascita", "Luogo di nascita", "Residenza", "Domicilio (se diverso)"];
+
+async function chiamaMieiDati(metodo, corpo) {
+  const cfg = config();
+  if (!cfg) throw new Error("Compilatore non collegato.");
+  let res;
+  try {
+    res = await fetch(cfg.url + "/miei-dati", {
+      method: metodo,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+      ...addressSpace(cfg.url),
+    });
+  } catch {
+    throw new Error("Compilatore non raggiungibile: serve la rete dell'ufficio.");
+  }
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+  return out;
+}
+const mieiDati = () => chiamaMieiDati("GET");
+
+let mieiDlg = null;
+
+/** La scheda del collega da compilare o correggere; vero se salvata. */
+export async function apriMieiDati(miei = null) {
+  try {
+    miei = miei || await mieiDati();
+  } catch (e) {
+    alert(e.message || String(e));
+    return false;
+  }
+  if (!mieiDlg) {
+    mieiDlg = h("dialog", { class: "modal miei-dialog", "aria-labelledby": "mieiTitle" },
+      h("form", { method: "dialog" },
+        h("h2", { id: "mieiTitle" }, "I miei dati"),
+        h("p", { class: "fill-hint" }, "Servono per compilare i moduli dove ci sei tu (referente, dichiarante...). "
+          + "Restano nella cassaforte cifrata del compilatore della Vinicola e vanno all'AI solo quando compili tu. "
+          + "Scrivi solo quello che vuoi: i campi vuoti restano vuoti nei moduli."),
+        h("div", { class: "miei-campi" }, VOCI.map((v, i) =>
+          h("label", null, h("span", null, v), h("input", { type: "text", "data-voce": v, autocomplete: "off", required: i === 0 })))),
+        h("label", { class: "miei-altro" }, h("span", null, "Altro (un dato per riga)"), h("textarea", { rows: 4 })),
+        h("div", { class: "modal-actions" },
+          h("button", { class: "btn", type: "submit", value: "cancel", formnovalidate: true }, "Annulla"),
+          h("button", { class: "btn primary", type: "submit", value: "ok" }, "Salva"))));
+    document.body.append(mieiDlg);
+  }
+  const valori = {};
+  const altro = [];
+  for (const riga of String(miei.testo || "").split("\n")) {
+    const m = /^- \*\*(.+?)\*\*: (.*)$/.exec(riga.trim());
+    if (m && VOCI.includes(m[1])) valori[m[1]] = m[2];
+    else if (riga.trim() && !riga.startsWith("# ")) altro.push(riga.replace(/^- /, ""));
+  }
+  for (const i of mieiDlg.querySelectorAll("input[data-voce]")) i.value = valori[i.dataset.voce] || "";
+  if (!valori["Nome e cognome"] && miei.nome) mieiDlg.querySelector("input[data-voce]").value = miei.nome;
+  mieiDlg.querySelector("textarea").value = altro.join("\n");
+  mieiDlg.returnValue = "";
+  const ok = await new Promise((resolve) => {
+    mieiDlg.addEventListener("close", () => resolve(mieiDlg.returnValue === "ok"), { once: true });
+    mieiDlg.showModal();
+  });
+  if (!ok) return false;
+  const righe = [...mieiDlg.querySelectorAll("input[data-voce]")]
+    .filter((i) => i.value.trim()).map((i) => `- **${i.dataset.voce}**: ${i.value.trim()}`);
+  const extra = mieiDlg.querySelector("textarea").value.split("\n").map((r) => r.trim()).filter(Boolean).map((r) => `- ${r}`);
+  const testo = [`# Dati di ${miei.nome || "collega"} (scritti in C.A.R.T.A.)`, ...righe, ...extra].join("\n");
+  try {
+    await chiamaMieiDati("POST", { testo });
+  } catch (e) {
+    alert(e.message || String(e));
+    return false;
+  }
+  try {
+    const nome = valori["Nome e cognome"] || mieiDlg.querySelector("input[data-voce]").value.trim();
+    if (nome && !localStorage.getItem(CHI)) localStorage.setItem(CHI, nome);
+  } catch { /* niente */ }
+  return true;
 }
 
 /** I dati inseriti a mano, in cassaforte per la prossima compilazione (solo dopo il «Sì» dell'utente). */

@@ -1177,3 +1177,13 @@ body.outlook .esempi { display: none; }
 .fill-salva { margin: 12px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .fill-salva p { margin: 0 0 8px; font-size: 14px; }
 .fill-salva .modal-actions { justify-content: flex-start; margin-top: 0; }
+
+/* «I miei dati» dei colleghi */
+.miei-dialog { width: min(560px, calc(100vw - 32px)); }
+.miei-campi { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.miei-campi label, .miei-altro { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.miei-altro { margin-top: 10px; }
+.miei-campi input, .miei-altro textarea { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+@media (max-width: 520px) { .miei-campi { grid-template-columns: 1fr; } }
+.fill-miei { margin-top: 6px; }
