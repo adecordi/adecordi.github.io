@@ -52,6 +52,7 @@ export function init(elements, hooks) {
     annotationEditorHighlightColors: "rosso=#A4161A,giallo=#FFE16A", // le sottolineature (vedi testo.underline)
   });
   linkService.setViewer(pdfViewer);
+  ridisegnaSeCambiaDensita();
   testo.init(pdfjsLib, pdfViewer, eventBus, els, hooks);
   bindPages();
   bindZoom();
@@ -133,6 +134,26 @@ export async function close(task) {
 }
 
 /* --------------------------------------------------- Pagine e zoom */
+
+// Zoom del browser (Ctrl e rotellina) o finestra spostata su un altro schermo: cambia la densità dei pixel e le
+// pagine già disegnate verrebbero solo ingrandite, sgranate (Alessandro, 30/10/2026: «non mi sembra molto
+// definita»). Si ridisegnano alla densità nuova.
+// Si ascoltano sia la media query della risoluzione sia il ridimensionamento: lo zoom con Ctrl fa scattare tutti e
+// due, il cambio di schermo a volte solo il primo.
+let densita = window.devicePixelRatio;
+function controllaDensita() {
+  if (window.devicePixelRatio === densita) return;
+  densita = window.devicePixelRatio;
+  if (pdfViewer.pdfDocument) pdfViewer.refresh();
+}
+function ridisegnaSeCambiaDensita() {
+  const ascolta = () => matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener("change", () => {
+    controllaDensita();
+    ascolta();
+  }, { once: true });
+  ascolta();
+  window.addEventListener("resize", controllaDensita);
+}
 
 function bindPages() {
   eventBus.on("pagesinit", () => {
