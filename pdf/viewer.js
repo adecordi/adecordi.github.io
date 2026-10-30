@@ -385,12 +385,7 @@ export async function addImage(file, options = { widthPt: 170, maxHeightPt: 70 }
 
 /** Modalità «sistema la firma»: si sposta e si ridimensiona, finché non si preme «Fatto». */
 async function startSignMode() {
-  const { AnnotationEditorType } = pdfjsLib;
-  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.STAMP) {
-    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
-    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.STAMP };
-    await changed;
-  }
+  await testo.modalitaEditor(pdfjsLib.AnnotationEditorType.STAMP);
   // iPad (WebKit): trascinando la firma partiva la selezione del testo sotto, non lo spostamento.
   // Finché si sistema la firma il testo non si seleziona, e il dito sulla firma non fa altro.
   els.viewerContainer.classList.add("sign-mode");
@@ -423,14 +418,7 @@ export function endImage() {
     els.viewer.removeEventListener("touchmove", touchGuard, { capture: true });
   }
   touchGuard = null;
-  // senza documento (chiamata da closeDocument mentre se ne apre uno) PDF.js rifiuta il cambio di modalità
-  if (pdfViewer.pdfDocument && pdfViewer.annotationEditorMode > pdfjsLib.AnnotationEditorType.NONE) {
-    try {
-      pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
-    } catch (e) {
-      console.warn("modalità editor:", e);
-    }
-  }
+  testo.modalitaNormale(); // senza documento, o con l'editor non ancora pronto, PDF.js rifiuterebbe
 }
 
 /**
@@ -522,12 +510,8 @@ export async function impostaCampo(nome, valore) {
 }
 
 export async function startNote() {
-  const { AnnotationEditorType, AnnotationEditorParamsType } = pdfjsLib;
-  if (pdfViewer.annotationEditorMode !== AnnotationEditorType.FREETEXT) {
-    const changed = new Promise((resolve) => eventBus.on("annotationeditormodechanged", resolve, { once: true }));
-    pdfViewer.annotationEditorMode = { mode: AnnotationEditorType.FREETEXT };
-    await changed;
-  }
+  const { AnnotationEditorParamsType } = pdfjsLib;
+  await testo.modalitaEditor(pdfjsLib.AnnotationEditorType.FREETEXT);
   eventBus.dispatch("switchannotationeditorparams", { source: null, type: AnnotationEditorParamsType.FREETEXT_COLOR, value: NOTE_COLOR });
 }
 

@@ -1027,6 +1027,37 @@ function boxesFromParts(view, parts) {
 
 const COLORI = { sottolinea: "#A4161A", evidenzia: "#FFE16A" };
 
+/**
+ * Cambia la modalità dell'editor di PDF.js (firma, nota, sottolineatura) aspettando che sia pronto: l'editor nasce
+ * dopo la prima pagina disegnata, e prima PDF.js risponde «The AnnotationEditor is not enabled» (visto sull'iPad,
+ * più lento, 30/10/2026). Si aspetta fino a 4 secondi, poi un messaggio in italiano.
+ */
+export async function modalitaEditor(mode) {
+  const T = pdfjsLib.AnnotationEditorType;
+  for (let i = 0; i < 40; i++) {
+    if (pdfViewer.pdfDocument && pdfViewer.annotationEditorMode !== T.DISABLE) {
+      if (pdfViewer.annotationEditorMode === mode) return;
+      const changed = new Promise((resolve) => bus.on("annotationeditormodechanged", resolve, { once: true }));
+      pdfViewer.annotationEditorMode = { mode };
+      await changed;
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("Il documento non è ancora pronto per firme, note e sottolineature: riprova fra un attimo.");
+}
+
+/** Torna alla modalità normale senza mai dare errore. */
+export function modalitaNormale() {
+  const T = pdfjsLib.AnnotationEditorType;
+  if (!pdfViewer.pdfDocument || pdfViewer.annotationEditorMode <= T.NONE) return;
+  try {
+    pdfViewer.annotationEditorMode = { mode: T.NONE };
+  } catch (e) {
+    console.warn("modalità editor:", e);
+  }
+}
+
 export const underline = (pick) => annotate(pick, "sottolinea");
 
 /** Sottolinea o evidenzia (in giallo) i pezzi scelti. Ritorna quante pagine ha toccato. */
@@ -1035,11 +1066,11 @@ export async function annotate(pick, kind) {
     ui.toast("Seleziona prima il testo.");
     return 0;
   }
-  const T = pdfjsLib.AnnotationEditorType;
-  if (pdfViewer.annotationEditorMode !== T.HIGHLIGHT) {
-    const changed = new Promise((resolve) => bus.on("annotationeditormodechanged", resolve, { once: true }));
-    pdfViewer.annotationEditorMode = { mode: T.HIGHLIGHT };
-    await changed;
+  try {
+    await modalitaEditor(pdfjsLib.AnnotationEditorType.HIGHLIGHT);
+  } catch (e) {
+    ui.toast(e.message, "error");
+    return 0;
   }
   let n = 0;
   try {
@@ -1059,7 +1090,7 @@ export async function annotate(pick, kind) {
     }
   } finally {
     // In modalità «evidenzia» PDF.js evidenzierebbe da sé ogni selezione: si torna subito a quella normale.
-    pdfViewer.annotationEditorMode = { mode: T.NONE };
+    modalitaNormale();
   }
   clearBox();
   if (!n) ui.toast("Non ci sono riuscito: riprova con la pagina visibile.", "error");
