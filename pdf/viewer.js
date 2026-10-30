@@ -165,7 +165,7 @@ async function raddrizza() {
       if (Math.abs(a) < 0.15) continue;
       // la pagina intera (immagine, testo selezionabile, campi) gira insieme, attorno al centro
       v.div.style.transformOrigin = "50% 50%";
-      v.div.style.transform = `rotate(${-a}deg)`;
+      v.div.style.transform = `rotate(${a}deg)`;
       girate++;
       if (i === pdfViewer.currentPageNumber - 1) angoloMostrato = a;
     }

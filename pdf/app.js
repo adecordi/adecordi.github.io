@@ -193,7 +193,8 @@ async function openFile(file) {
  * @param {string} name nome del file
  * @param {{ bytes: Uint8Array, name: string }} [parent] documento da cui proviene (allegato di una fattura)
  */
-async function openBytes(bytes, name, parent = null) {
+async function openBytes(bytes, name, parent = null, { sostituisci = false } = {}) {
+  if (!sostituisci && !(await lasciaDocumento())) return;
   const seq = ++openSeq;
   busy("Apertura del documento…", { delay: BUSY_DELAY });
   try {
@@ -226,6 +227,7 @@ async function openBytes(bytes, name, parent = null) {
 
 // Torna alla schermata iniziale (in Outlook: l'elenco degli allegati).
 async function showHome() {
+  if (!(await lasciaDocumento())) return;
   ++openSeq;
   idle();
   await closeDocument();
@@ -293,6 +295,10 @@ async function showPdf(seq) {
   }
   doc.pdf = pdf;
   doc.usedPassword = !!task.usedPassword;
+  const questo = doc;
+  pdf.annotationStorage.onSetModified = () => {
+    questo.modificato = true;
+  };
   viewer.show(pdf);
   els.viewerContainer.focus({ preventScroll: true });
 }
@@ -730,7 +736,53 @@ async function downloadDocument() {
   const current = doc;
   const data = await documentBytes(current);
   saveBytes(data, current.name, current.type.mime);
+  current.modificato = false;
 }
+
+/* ------------------------------------- Uscire con modifiche non salvate */
+
+let uscitaDlg = null;
+
+// Vero se si può lasciare il documento: niente modifiche, oppure salvato o lasciato perdere dall'utente.
+async function lasciaDocumento() {
+  if (!doc || !doc.modificato) return true;
+  if (!uscitaDlg) {
+    uscitaDlg = h("dialog", { class: "modal uscita-dialog", "aria-labelledby": "uscitaTitle" },
+      h("form", { method: "dialog" },
+        h("h2", { id: "uscitaTitle" }, "Modifiche non salvate"),
+        h("p", { class: "uscita-testo" }),
+        h("div", { class: "modal-actions" },
+          h("button", { class: "btn", type: "submit", value: "annulla" }, "Annulla"),
+          h("button", { class: "btn", type: "submit", value: "esci" }, "Esci senza salvare"),
+          h("button", { class: "btn primary", type: "submit", value: "salva" }, "Salva"))));
+    document.body.append(uscitaDlg);
+  }
+  uscitaDlg.querySelector(".uscita-testo").textContent =
+    `«${doc.name}» ha dati compilati, firme o note che non hai ancora salvato. Se esci, si perdono.`;
+  uscitaDlg.returnValue = "";
+  const scelta = await new Promise((resolve) => {
+    uscitaDlg.addEventListener("close", () => resolve(uscitaDlg.returnValue), { once: true });
+    uscitaDlg.showModal();
+    uscitaDlg.querySelector(".btn.primary").focus();
+  });
+  if (scelta === "salva") {
+    await downloadDocument();
+    return true;
+  }
+  if (scelta === "esci") {
+    doc.modificato = false;
+    return true;
+  }
+  return false;
+}
+
+// Chiudere la scheda o la finestra: il browser mostra il suo avviso (il testo non si può scegliere).
+window.addEventListener("beforeunload", (e) => {
+  if (doc && doc.modificato && !aggiornaPremuto) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
 
 /* ------------------------------------------------- Firma e compilazione */
 
@@ -808,7 +860,8 @@ async function fillForm() {
 }
 
 async function mostraCompilato(result) {
-  await openBytes(result.bytes, result.name);
+  await openBytes(result.bytes, result.name, null, { sostituisci: true });
+  if (doc) doc.modificato = true;
   els.sigPanel.hidden = true;
   compilatore.renderReport(els.fillPanel, els.fillBody, result.report, {
     scrivoIo: () => addNote(),
@@ -1107,8 +1160,7 @@ async function cercaAggiornamenti() {
 }
 
 async function aggiorna() {
-  if (doc && doc.pdf && doc.pdf.annotationStorage.size > 0
-    && !confirm("Il documento ha modifiche non salvate (firma, note, campi). Aggiornando la pagina si perdono. Continuo?")) return;
+  if (!(await lasciaDocumento())) return;
   aggiornaPremuto = true;
   busy("Aggiorno C.A.R.T.A.…");
   try {

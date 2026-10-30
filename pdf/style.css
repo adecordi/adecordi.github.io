@@ -892,6 +892,8 @@ body.outlook .welcome { place-items: start center; }
 /* ------------------------------------------------------- Compilazione */
 
 .fill-dialog { width: min(520px, calc(100vw - 32px)); }
+.uscita-dialog { width: min(460px, calc(100vw - 32px)); }
+.uscita-dialog .modal-actions { flex-wrap: wrap; }
 .modal p.fill-doc { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 .fill-label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
 .fill-dialog textarea, .fill-dialog .fill-chi {
