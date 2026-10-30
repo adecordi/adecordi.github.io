@@ -410,6 +410,65 @@ function drawOcrLayer(view) {
   else view.div.append(layer);
 }
 
+/* ------------------------------------------- Raddrizzare le scansioni */
+
+/** Quanto la pagina è fatta di immagini (0-1): sopra metà è una scansione. */
+export async function quotaImmagini(view) {
+  const d = await pageData(view);
+  return d ? d.imageShare : 0;
+}
+
+/**
+ * L'angolo (in gradi, tra -5 e +5) di cui è storta una scansione: si cerca l'inclinazione per cui le
+ * righe di testo stanno più «in fila», cioè i punti scuri si concentrano su meno righe orizzontali.
+ * Prima a passi di 0,5°, poi di 0,05° attorno al migliore.
+ */
+export async function angoloStorto(view) {
+  const page = view.pdfPage;
+  const vp = page.getViewport({ scale: 1, rotation: 0 });
+  const k = Math.min(1000 / vp.width, 2);
+  const c = document.createElement("canvas");
+  c.width = Math.round(vp.width * k);
+  c.height = Math.round(vp.height * k);
+  await page.render({ canvas: c, viewport: page.getViewport({ scale: k, rotation: 0 }) }).promise;
+  const { data, width, height } = c.getContext("2d").getImageData(0, 0, c.width, c.height);
+  c.width = c.height = 0;
+  const xs = [];
+  const ys = [];
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const i = (y * width + x) * 4;
+      if (data[i] + data[i + 1] + data[i + 2] < 300) {
+        xs.push(x - width / 2);
+        ys.push(y);
+      }
+    }
+  }
+  if (xs.length < 500) return 0;
+  const punteggio = (gradi) => {
+    const t = Math.tan((gradi * Math.PI) / 180);
+    // a fasce di 2 pixel, come il passo con cui si leggono i punti: con fasce da 1 le righe dritte
+    // cadrebbero tutte sulle file pari e lo zero vincerebbe sempre
+    const righe = new Float64Array(Math.ceil((height + 2 * width) / 2) + 2);
+    for (let i = 0; i < xs.length; i++) righe[Math.round((ys[i] + xs[i] * t + width) / 2)]++;
+    let s = 0;
+    for (const v of righe) s += v * v;
+    return s;
+  };
+  let migliore = 0;
+  let best = -1;
+  for (let a = -5; a <= 5.001; a += 0.5) {
+    const p = punteggio(a);
+    if (p > best) [best, migliore] = [p, a];
+  }
+  const centro = migliore;
+  for (let a = centro - 0.5; a <= centro + 0.5001; a += 0.05) {
+    const p = punteggio(a);
+    if (p > best) [best, migliore] = [p, a];
+  }
+  return Math.round(migliore * 100) / 100;
+}
+
 /* -------------------------------------------------- Selezione a riquadro */
 
 export function setBoxMode(on, kind = "testo") {

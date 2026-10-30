@@ -137,9 +137,49 @@ function bindPages() {
   });
   els.btnPrev.addEventListener("click", () => pdfViewer.previousPage());
   els.btnNext.addEventListener("click", () => pdfViewer.nextPage());
-  els.btnRotate.addEventListener("click", () => {
+  els.btnRotate.addEventListener("click", async () => {
+    // Scansione storta di qualche grado: il primo tocco la raddrizza dell'angolo giusto (le pagine
+    // scansionate dello stesso documento di solito sono storte allo stesso modo, ma si misura ognuna).
+    if (!raddrizzate.has(pdfViewer.pdfDocument) && await raddrizza()) return;
     pdfViewer.pagesRotation = (pdfViewer.pagesRotation + 90) % 360;
   });
+}
+
+// Documenti già raddrizzati: il tasto torna a girare di 90°.
+const raddrizzate = new WeakSet();
+
+async function raddrizza() {
+  const doc = pdfViewer.pdfDocument;
+  if (!doc) return false;
+  const vista = pdfViewer.getPageView(pdfViewer.currentPageNumber - 1);
+  if (!vista || (await testo.quotaImmagini(vista)) < 0.5) return false; // non è una scansione
+  ui.busy("Cerco l'inclinazione della scansione…");
+  let girate = 0;
+  let angoloMostrato = 0;
+  try {
+    for (let i = 0; i < pdfViewer.pagesCount && i < 60; i++) {
+      const v = pdfViewer.getPageView(i);
+      if (!v || !v.pdfPage) continue;
+      if ((await testo.quotaImmagini(v)) < 0.5) continue;
+      const a = await testo.angoloStorto(v);
+      if (Math.abs(a) < 0.15) continue;
+      // la pagina intera (immagine, testo selezionabile, campi) gira insieme, attorno al centro
+      v.div.style.transformOrigin = "50% 50%";
+      v.div.style.transform = `rotate(${-a}deg)`;
+      girate++;
+      if (i === pdfViewer.currentPageNumber - 1) angoloMostrato = a;
+    }
+  } finally {
+    ui.idle();
+  }
+  raddrizzate.add(doc);
+  if (!girate) {
+    ui.toast("La scansione è già dritta: giro la pagina di 90°.");
+    return false;
+  }
+  const gradi = Math.abs(angoloMostrato || 0).toLocaleString("it-IT", { maximumFractionDigits: 2 });
+  ui.toast(girate === 1 ? `Pagina raddrizzata di ${gradi}°.` : `${girate} pagine raddrizzate (questa di ${gradi}°). Premi ancora per girare di 90°.`);
+  return true;
 }
 
 function updatePageControls(page) {
