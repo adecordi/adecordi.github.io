@@ -382,55 +382,133 @@ export function renderSummary(panel, body, md, name, kind = "riassunto") {
 export function renderReport(panel, body, report, azioni = {}) {
   const compilati = report.compilati || [];
   const mancanti = report.mancanti || [];
-  const trovati = []; // dati trovati e confermati, da inserire tutti insieme
-  const inserisci = h("button", { class: "btn primary", type: "button", hidden: true,
-    onclick: () => azioni.inserisci && azioni.inserisci(trovati) }, "Inserisci i dati trovati");
+  // Dati scritti o trovati e già inseriti nel PDF: alla fine si chiede se tenerli in cassaforte.
+  const inseriti = [];
+  const salva = h("div", { class: "fill-salva", hidden: true });
+  const chiediSalva = () => {
+    if (!inseriti.length) {
+      salva.hidden = true;
+      return;
+    }
+    const n = inseriti.length;
+    salva.replaceChildren(
+      h("p", null, `Salvo ${n === 1 ? "questo dato" : `questi ${n} dati`} in cassaforte, così la prossima volta li compilo io?`),
+      h("div", { class: "modal-actions" },
+        h("button", { class: "btn primary", type: "button", onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            const r = await ricorda(inseriti.splice(0));
+            salva.replaceChildren(h("p", null, `✓ Salvati in cassaforte (${r.aggiunti}): li userò dalla prossima compilazione.`));
+          } catch (err) {
+            salva.replaceChildren(h("p", null, err.message || String(err)));
+          }
+        } }, "Sì, salvali"),
+        h("button", { class: "btn", type: "button", onclick: () => {
+          inseriti.splice(0);
+          salva.hidden = true;
+        } }, "No")));
+    salva.hidden = false;
+  };
+  // Mette il valore nel PDF: nel campo giusto se il compilatore l'ha indicato, altrimenti ricompilando con quel dato.
+  const metti = async (m, valore, stato) => {
+    if (m.pdf_campo && azioni.imposta && await azioni.imposta(m.pdf_campo, valore)) {
+      stato.replaceChildren(h("span", { class: "fill-ok" }, "✓ inserito: "), h("span", { class: "fill-value" }, valore));
+      inseriti.push({ campo: m.campo, valore });
+      chiediSalva();
+      return;
+    }
+    // Il posto non si sa: si ricompila subito con questo dato (il pannello si rinnova).
+    if (azioni.inserisci) await azioni.inserisci([{ campo: m.campo, valore }]);
+  };
   const voce = (m) => {
     const stato = h("div", { class: "fill-found" });
-    const firma = /firm/i.test(m.campo);
+    if (/firm/i.test(m.campo)) {
+      return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null,
+        h("div", { class: "fill-actions" },
+          h("button", { class: "btn", type: "button", onclick: () => azioni.firma && azioni.firma() }, "Firma ora")), stato);
+    }
+    if (m.tipo === "casella" && m.pdf_campo) {
+      let spuntata = false;
+      const b = h("button", { class: "btn", type: "button", onclick: async () => {
+        spuntata = !spuntata;
+        if (await azioni.imposta(m.pdf_campo, spuntata)) b.textContent = spuntata ? "Togli la spunta" : "Spunta";
+      } }, "Spunta");
+      return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null,
+        h("div", { class: "fill-actions" }, b,
+          h("button", { class: "btn", type: "button", onclick: () => azioni.mostra(m.pdf_campo) }, "Mostra nel modulo")),
+        h("small", null, "Puoi anche cliccare direttamente il quadratino sul modulo."), stato);
+    }
+    // «Lo scrivo io»: una casella qui sotto, e con «Inserisci» il valore va subito nel modulo.
+    const scrivi = h("form", { class: "fill-scrivi", hidden: true, onsubmit: async (e) => {
+      e.preventDefault();
+      const valore = scrivi.querySelector("input").value.trim();
+      if (!valore) return;
+      scrivi.hidden = true;
+      await metti(m, valore, stato);
+    } },
+      h("input", { type: "text", placeholder: m.campo, "aria-label": m.campo }),
+      h("button", { class: "btn primary", type: "submit" }, "Inserisci"));
     const bottoni = h("div", { class: "fill-actions" },
-      firma
-        ? h("button", { class: "btn", type: "button", onclick: () => azioni.firma && azioni.firma() }, "Firma ora")
-        : [h("button", { class: "btn", type: "button", onclick: () => azioni.scrivoIo && azioni.scrivoIo() }, "Lo scrivo io"),
-          h("button", { class: "btn", type: "button", onclick: async (e) => {
-            const b = e.currentTarget;
-            b.disabled = true;
-            stato.replaceChildren(h("span", { class: "fill-wait" }, "Cerco in Files Comuni, OneDrive e posta… (circa un minuto)"));
-            try {
-              const r = await cercaDato(m.campo, m.motivo || "");
-              if (!r.trovato) {
-                stato.replaceChildren(h("span", null, "Non trovato. ", r.nota || ""));
-                b.disabled = false;
-                return;
-              }
-              const dato = { campo: m.campo, valore: r.valore };
-              stato.replaceChildren(
-                h("span", { class: "fill-value" }, r.valore),
-                h("small", null, `Fonte: ${r.fonte || "?"} · certezza ${r.certezza || "?"}`),
-                r.nota ? h("small", null, r.nota) : null,
-                h("button", { class: "btn", type: "button", onclick: (ev) => {
-                  trovati.push(dato);
-                  ev.currentTarget.replaceWith(h("span", { class: "fill-ok" }, "✓ da inserire"));
-                  inserisci.hidden = false;
-                } }, "Usa questo dato"));
-            } catch (err) {
-              stato.replaceChildren(h("span", null, err.message || String(err)));
-              b.disabled = false;
-            }
-          } }, "Cercalo")]);
-    return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null, bottoni, stato);
+      h("button", { class: "btn", type: "button", onclick: () => {
+        if (!m.pdf_campo) return azioni.scrivoIo && azioni.scrivoIo(); // posto sconosciuto: una nota sulla pagina
+        scrivi.hidden = false;
+        scrivi.querySelector("input").focus();
+        azioni.mostra && azioni.mostra(m.pdf_campo);
+      } }, "Lo scrivo io"),
+      h("button", { class: "btn", type: "button", onclick: async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        stato.replaceChildren(h("span", { class: "fill-wait" }, "Cerco in Files Comuni, OneDrive e posta… (circa un minuto)"));
+        try {
+          const r = await cercaDato(m.campo, m.motivo || "");
+          if (!r.trovato) {
+            stato.replaceChildren(h("span", null, "Non trovato. ", r.nota || ""));
+            b.disabled = false;
+            return;
+          }
+          stato.replaceChildren(
+            h("span", { class: "fill-value" }, r.valore),
+            h("small", null, `Fonte: ${r.fonte || "?"} · certezza ${r.certezza || "?"}`),
+            r.nota ? h("small", null, r.nota) : null,
+            h("button", { class: "btn primary", type: "button", onclick: () => metti(m, r.valore, stato) }, "Inserisci"));
+        } catch (err) {
+          stato.replaceChildren(h("span", null, err.message || String(err)));
+          b.disabled = false;
+        }
+      } }, "Cercalo"));
+    return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null, bottoni, scrivi, stato);
   };
   body.replaceChildren(
     h("p", { class: "fill-summary" },
       compilati.length ? `${compilati.length} ${compilati.length === 1 ? "campo compilato" : "campi compilati"}` : "Nessun campo compilato",
-      report.metodo === "posizioni" ? " (modulo senza campi: testo aggiunto sopra la pagina, puoi spostarlo)." : "."),
-    h("p", { class: "fill-hint" }, "In blu, a macchina da scrivere, quello che ho scritto io: controlla tutto prima di salvarlo o mandarlo."),
+      report.metodo === "posizioni" ? " (modulo senza campi: ho aggiunto i campi sopra la pagina)." : "."),
+    h("p", { class: "fill-hint" }, "In blu, a macchina da scrivere, quello che ho scritto io: puoi correggerlo cliccandoci. Gli spazi vuoti e i quadratini si compilano cliccandoci sopra."),
     mancanti.length ? h("section", null, h("h3", null, "Da completare"),
-      h("p", { class: "fill-hint" }, "Per ogni dato: lo scrivi tu sul modulo, oppure lo cerco io nei Files Comuni, su OneDrive e nella posta."),
-      h("ul", { class: "fill-list todo" }, mancanti.map(voce)), inserisci) : null,
+      h("p", { class: "fill-hint" }, "Scrivilo tu o lo cerco io nei Files Comuni, su OneDrive e nella posta: con «Inserisci» va subito nel modulo."),
+      h("ul", { class: "fill-list todo" }, mancanti.map(voce)), salva) : null,
     compilati.length ? h("section", null, h("h3", null, "Compilati"),
       h("ul", { class: "fill-list" }, compilati.map((c) =>
         h("li", null, h("strong", null, c.campo), h("span", null, String(c.valore)),
           c.pagina ? h("em", null, `pag. ${c.pagina}`) : null)))) : null);
   panel.hidden = false;
+}
+
+/** I dati inseriti a mano, in cassaforte per la prossima compilazione (solo dopo il «Sì» dell'utente). */
+async function ricorda(dati) {
+  const cfg = config();
+  if (!cfg) throw new Error("Compilatore non collegato.");
+  let res;
+  try {
+    res = await fetch(cfg.url + "/ricorda", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+      body: JSON.stringify({ profilo: ultima ? ultima.profilo : null, nome: ultima ? ultima.file.name : "", dati }),
+      ...addressSpace(cfg.url),
+    });
+  } catch {
+    throw new Error("Compilatore non raggiungibile: dati non salvati.");
+  }
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+  return out;
 }

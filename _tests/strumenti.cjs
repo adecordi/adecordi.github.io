@@ -1,5 +1,6 @@
 // OCR delle scansioni, selezione continua e a riquadro, firma, compilazione (con un compilatore finto).
 const fs = require("fs");
+const path = require("path");
 const { chromium } = require("playwright");
 const { FX, SHOTS, BASE, check, watchErrors } = require("./common.cjs");
 
@@ -126,6 +127,8 @@ const FAKE = "https://compilatore.prova";
   let cercato = null;
   const richieste = [];
   let riassunto = null;
+  let ricordato = null;
+  const MODULO = path.join(__dirname, "..", "pdf", "esempi", "conto-corrente-dedicato.pdf");
   await page.route(FAKE + "/**", async (route) => {
     const req = route.request();
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" } });
@@ -142,16 +145,24 @@ const FAKE = "https://compilatore.prova";
       return route.fulfill({ status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         body: JSON.stringify({ trovato: true, valore: "CR-28313", fonte: "visura del 17/09/2026", certezza: "alta", nota: "" }) });
     }
+    if (req.url().endsWith("/ricorda")) {
+      ricordato = JSON.parse(req.postData());
+      return route.fulfill({ status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ voce: "SCHEDA_AGGIUNTE_AZIENDA", aggiunti: ricordato.dati.length }) });
+    }
     richieste.push(JSON.parse(req.postData()));
     request = { auth: req.headers().authorization, body: JSON.parse(req.postData()) };
     await route.fulfill({
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({
-        pdf: fs.readFileSync(FX + "doc.pdf").toString("base64"),
+        pdf: fs.readFileSync(MODULO).toString("base64"),
         metodo: "campi",
         compilati: [{ campo: "Cognome", valore: "ROSSI", pagina: 1 }],
-        mancanti: [{ campo: "Firma", motivo: "da fare a mano" }, { campo: "Numero REA", motivo: "non nelle fonti" }],
+        mancanti: [{ campo: "Firma", motivo: "da fare a mano" }, { campo: "Numero REA", motivo: "non nelle fonti" },
+          { campo: "Banca", motivo: "non nelle fonti", pdf_campo: "p1_c06_Banca", tipo: "testo" },
+          { campo: "Delegato 1", motivo: "non nelle fonti", pdf_campo: "p1_c16_Cognome e nome (riga 1)", tipo: "testo" },
+          { campo: "Conto per tutte le commesse", motivo: "scelta", pdf_campo: "p1_c14_CASELLA a tutte le commesse pubbliche", tipo: "casella" }],
       }),
     });
   });
@@ -176,8 +187,30 @@ const FAKE = "https://compilatore.prova";
   await voceRea.locator(".fill-value").waitFor({ timeout: 10000 });
   check("Cercalo: valore e fonte", (await voceRea.textContent()).includes("CR-28313") && (await voceRea.textContent()).includes("visura")
     && cercato && cercato.campo === "Numero REA" && cercato.profilo === "azienda");
-  await voceRea.locator("button", { hasText: "Usa questo dato" }).click();
-  await page.click("#fillBody button:has-text('Inserisci i dati trovati')");
+  // Con il campo noto: «Inserisci» lo scrive subito nel modulo, senza ricompilare
+  const campoVale = (v) => page.evaluate((v) => [...document.querySelectorAll(".annotationLayer input")].some((i) => i.value === v), v);
+  const voceBanca = page.locator("#fillBody li", { hasText: "Banca" });
+  await voceBanca.locator("button", { hasText: "Cercalo" }).click();
+  await voceBanca.locator(".fill-value").waitFor({ timeout: 10000 });
+  await voceBanca.locator(".fill-found button", { hasText: "Inserisci" }).click();
+  await voceBanca.locator(".fill-ok").waitFor({ timeout: 5000 });
+  check("Cercalo → Inserisci: subito nel campo, senza ricompilare", await campoVale("CR-28313") && richieste.length === 1);
+  const voceDel = page.locator("#fillBody li", { hasText: "Delegato 1" });
+  await voceDel.locator("button", { hasText: "Lo scrivo io" }).click();
+  await voceDel.locator("input").fill("Mario Rossi");
+  await voceDel.locator(".fill-scrivi button", { hasText: "Inserisci" }).click();
+  await voceDel.locator(".fill-ok").waitFor({ timeout: 5000 });
+  check("Lo scrivo io → Inserisci: nel campo", await campoVale("Mario Rossi"));
+  await page.locator("#fillBody li", { hasText: "Conto per tutte" }).locator("button", { hasText: "Spunta" }).click();
+  await page.waitForTimeout(300);
+  check("Spunta: la casella del modulo", await page.evaluate(() => [...document.querySelectorAll(".annotationLayer input[type=checkbox]")].some((i) => i.checked)));
+  check("chiede se salvare in cassaforte", (await page.textContent(".fill-salva")).includes("2 dati"));
+  await page.click(".fill-salva button:has-text('Sì, salvali')");
+  await page.waitForFunction(() => /Salvati/.test(document.querySelector(".fill-salva").textContent));
+  check("in cassaforte i due dati inseriti", ricordato && ricordato.dati.length === 2 && ricordato.profilo === "azienda"
+    && ricordato.dati.some((d) => d.valore === "Mario Rossi"), JSON.stringify(ricordato));
+  // Senza campo noto: si ricompila subito con quel dato
+  await voceRea.locator(".fill-found button", { hasText: "Inserisci" }).click();
   await page.waitForFunction(() => document.getElementById("busy").hidden);
   await page.waitForTimeout(500);
   check("ricompilato col dato trovato", richieste.length === 2 && richieste[1].istruzioni.includes("Numero REA: CR-28313")
@@ -190,7 +223,7 @@ const FAKE = "https://compilatore.prova";
   check("«Riassumi» visibile", await page.isVisible("#btnSum"));
   await page.click("#btnSum");
   await page.waitForSelector("#sumPanel:not([hidden])", { timeout: 10000 });
-  check("al compilatore il testo di ogni pagina", riassunto && riassunto.pagine.length === 3 && riassunto.pagine[0].includes("Riga 1"));
+  check("al compilatore il testo di ogni pagina", riassunto && riassunto.pagine.length === 1 && riassunto.pagine[0].includes("CONTO CORRENTE DEDICATO"));
   check("riassunto in elenco, non a colonne", (await page.$$("#sumBody .riassunto li")).length === 2
     && (await page.$eval("#sumBody .riassunto", (el) => getComputedStyle(el).display)) === "block");
 

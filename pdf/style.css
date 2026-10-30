@@ -1168,3 +1168,12 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 .esempi-nota .icon { width: 14px; height: 14px; vertical-align: -2px; }
 .esempi-nota { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
 body.outlook .esempi { display: none; }
+
+/* Il campo appena scritto o cercato dal pannello «Da completare» */
+.annotationLayer .campo-evidenziato { outline: 3px solid #e8a33d !important; outline-offset: 2px; transition: outline-color .4s; }
+.fill-scrivi { display: flex; gap: 6px; margin-top: 6px; }
+.fill-scrivi input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+.fill-salva { margin: 12px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.fill-salva p { margin: 0 0 8px; font-size: 14px; }
+.fill-salva .modal-actions { justify-content: flex-start; margin-top: 0; }

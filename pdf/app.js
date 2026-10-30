@@ -872,6 +872,8 @@ async function mostraCompilato(result) {
   compilatore.renderReport(els.fillPanel, els.fillBody, result.report, {
     scrivoIo: () => addNote(),
     firma: () => addSignature(),
+    imposta: (nome, valore) => (V ? V.impostaCampo(nome, valore) : false),
+    mostra: (nome) => V && V.mostraCampo(nome),
     inserisci: async (dati) => {
       try {
         const r = await compilatore.ricompila(dati, { busy, idle, toast });

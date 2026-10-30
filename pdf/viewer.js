@@ -425,6 +425,49 @@ const NOTE_COLOR = "#A4161A";
  * «Nota»: modalità «testo libero» di PDF.js. Un clic sulla pagina apre un riquadro dove si
  * scrive; si sposta trascinandolo e «Salva» la scrive nel PDF. Si chiude con endImage().
  */
+/* ------------------------------------------- Campi del modulo dal pannello */
+
+// Il campo del PDF con questo nome: id dell'annotazione, pagina (da 0), riquadro e tipo. Dalle annotazioni delle
+// pagine: getFieldObjects() sui moduli scritti da PyMuPDF torna vuoto.
+async function campo(nome) {
+  const doc = pdfViewer.pdfDocument;
+  if (!doc || !nome) return null;
+  for (let i = 0; i < doc.numPages && i < 60; i++) {
+    const a = (await (await doc.getPage(i + 1)).getAnnotations()).find((x) => x.fieldName === nome && x.id);
+    if (a) return { doc, id: a.id, pagina: i, rect: a.rect, tipo: a.checkBox || a.radioButton ? "checkbox" : "text" };
+  }
+  return null;
+}
+
+/** Porta in vista il campo e lo evidenzia (il cursore ci va dentro, se è da scrivere). */
+export async function mostraCampo(nome, c = null) {
+  c = c || await campo(nome);
+  if (!c) return false;
+  pdfViewer.scrollPageIntoView({ pageNumber: c.pagina + 1, destArray: [null, { name: "XYZ" }, c.rect[0] - 60, c.rect[3] + 80, null] });
+  setTimeout(() => {
+    const el = document.querySelector(`[data-element-id="${c.id}"]`);
+    if (!el) return;
+    el.classList.add("campo-evidenziato");
+    setTimeout(() => el.classList.remove("campo-evidenziato"), 2600);
+  }, 350);
+  return true;
+}
+
+/** Scrive un valore nel campo (o spunta / toglie la casella): subito, nel PDF che si salva. */
+export async function impostaCampo(nome, valore) {
+  const c = await campo(nome);
+  if (!c) return false;
+  const casella = c.tipo === "checkbox" || c.tipo === "radiobutton";
+  c.doc.annotationStorage.setValue(c.id, { value: casella ? !!valore : String(valore) });
+  const el = document.querySelector(`[data-element-id="${c.id}"]`);
+  if (el) {
+    if (casella) el.checked = !!valore;
+    else el.value = String(valore);
+  }
+  await mostraCampo(nome, c);
+  return true;
+}
+
 export async function startNote() {
   const { AnnotationEditorType, AnnotationEditorParamsType } = pdfjsLib;
   if (pdfViewer.annotationEditorMode !== AnnotationEditorType.FREETEXT) {
