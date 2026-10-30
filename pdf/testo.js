@@ -185,7 +185,7 @@ async function renderPage(page, dpi, maxPixels) {
     const [x1, y1] = viewport.convertToPdfPoint(bb.x1, bb.y0);
     return { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1) };
   };
-  return { canvas, toPdf };
+  return { canvas, toPdf, dpi: scale * 72 };
 }
 
 // Le parole già presenti come testo vero restano a PDF.js.
@@ -205,11 +205,16 @@ function makeLine(words) {
   };
 }
 
+// Una «parola» senza lettere né cifre è quasi sempre una riga da compilare (____, ....., ———) letta come testo:
+// nel livello selezionabile diventava una barra lunga sopra lo spazio vuoto (30/10/2026).
+const haTesto = (t) => /[\p{L}\p{N}]/u.test(t);
+
 function linesFromTesseract(data, toPdf, covered) {
   const lines = [];
   for (const line of data.lines || []) {
     const words = line.words
-      .filter((w) => w.confidence >= MIN_CONFIDENCE && w.text.trim())
+      // una lettera isolata letta con poca sicurezza è quasi sempre rumore sopra una riga vuota
+      .filter((w) => w.confidence >= MIN_CONFIDENCE && haTesto(w.text) && (w.text.trim().length > 1 || w.confidence >= 70))
       .map((w) => ({ ...toPdf(w.bbox), text: w.text.trim() }))
       .filter((w) => !covered(w));
     if (words.length) lines.push(makeLine(words));
@@ -224,8 +229,45 @@ const overlaps = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0.3 * M
  * Gradino 1: Tesseract nel browser. Con `thorough` fa una seconda passata a «testo sparso»
  * (moduli, tabelle, timbri, scritte isolate) e aggiunge le parole che la prima non aveva.
  */
+// Le righe da compilare (____ e linee) si cancellano prima dell'OCR: Tesseract le leggeva come lettere («ga»,
+// «TL E ES E I DARI») e nel testo selezionabile diventavano macchie sopra gli spazi vuoti (30/10/2026). Si sbiancano i
+// tratti scuri orizzontali più lunghi di ~4 mm: i tratti delle lettere sono molto più corti. Su una scansione storta
+// fino a ~1,5° ogni pezzo di riga resta abbastanza lungo.
+function cancellaRighe(canvas, dpi) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const { width: W, height: H } = canvas;
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+  const minimo = Math.round((4 / 25.4) * dpi);
+  const scuro = (i) => d[i] + d[i + 1] + d[i + 2] < 3 * 150;
+  for (let y = 0; y < H; y++) {
+    let x = 0;
+    while (x < W) {
+      if (!scuro((y * W + x) * 4)) {
+        x++;
+        continue;
+      }
+      let fine = x;
+      let buchi = 0;
+      while (fine + 1 < W && (scuro((y * W + fine + 1) * 4) || (buchi < 1 && fine + 2 < W && scuro((y * W + fine + 2) * 4)))) {
+        if (!scuro((y * W + fine + 1) * 4)) buchi++;
+        fine++;
+      }
+      if (fine - x + 1 >= minimo) {
+        for (let k = x; k <= fine; k++) {
+          const i = (y * W + k) * 4;
+          d[i] = d[i + 1] = d[i + 2] = 255;
+        }
+      }
+      x = fine + 1;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 async function recognize(page, textUnits, thorough = false) {
-  const { canvas, toPdf } = await renderPage(page, OCR_DPI, OCR_MAX_PIXELS);
+  const { canvas, toPdf, dpi } = await renderPage(page, OCR_DPI, OCR_MAX_PIXELS);
+  cancellaRighe(canvas, dpi);
   const covered = coveredBy(textUnits);
   const worker = await tesseract();
   try {
@@ -281,6 +323,7 @@ async function recognizeRemote(page, textUnits, level) {
     const re = /\S+/g;
     let m;
     while ((m = re.exec(r.testo))) {
+      if (!haTesto(m[0])) continue;
       words.push({ x0: box.x0 + ((box.x1 - box.x0) * m.index) / n, x1: box.x0 + ((box.x1 - box.x0) * (m.index + m[0].length)) / n,
         y0: box.y0, y1: box.y1, text: m[0] });
     }
@@ -390,20 +433,25 @@ function drawOcrLayer(view) {
   const vp = view.viewport;
   const layer = document.createElement("div");
   layer.className = "ocrLayer";
+  // Una fascia per PAROLA, al suo posto: con una per riga intera, su una scansione storta la fascia prendeva
+  // l'altezza di due righe e la selezione finiva spostata (30/10/2026). Lo spazio dopo la parola sta nella
+  // fascia stessa: un nodo di testo libero finirebbe in alto a sinistra, come gli a-capo.
   for (const line of d.ocr) {
-    const [x0, y0] = vp.convertToViewportPoint(line.x0, line.y0);
-    const [x1, y1] = vp.convertToViewportPoint(line.x1, line.y1);
-    const left = Math.min(x0, x1);
-    const top = Math.min(y0, y1);
-    const width = Math.abs(x1 - x0);
-    const height = Math.abs(y1 - y0);
-    const span = document.createElement("span");
-    span.textContent = line.text;
-    const size = height * 0.9;
-    measureCtx.font = `${size}px sans-serif`;
-    const natural = measureCtx.measureText(line.text).width || 1;
-    span.style.cssText = `left:${left}px;top:${top}px;font-size:${size}px;transform:scaleX(${width / natural})`;
-    layer.append(span, document.createElement("br"));
+    const parole = line.words && line.words.length ? line.words : [line];
+    parole.forEach((w, i) => {
+      const [x0, y0] = vp.convertToViewportPoint(w.x0, w.y0);
+      const [x1, y1] = vp.convertToViewportPoint(w.x1, w.y1);
+      const width = Math.abs(x1 - x0);
+      const height = Math.abs(y1 - y0);
+      const span = document.createElement("span");
+      span.textContent = w.text + (i < parole.length - 1 ? " " : "");
+      const size = height * 0.9;
+      measureCtx.font = `${size}px sans-serif`;
+      const natural = measureCtx.measureText(w.text).width || 1;
+      span.style.cssText = `left:${Math.min(x0, x1)}px;top:${Math.min(y0, y1)}px;font-size:${size}px;transform:scaleX(${width / natural})`;
+      layer.append(span);
+    });
+    layer.append(document.createElement("br"));
   }
   const textLayer = view.div.querySelector(".textLayer");
   if (textLayer) textLayer.after(layer);
