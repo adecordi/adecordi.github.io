@@ -64,6 +64,10 @@ export function init(elements, hooks) {
   new ResizeObserver(() => {
     cancelAnimationFrame(refit);
     refit = requestAnimationFrame(() => {
+      // Visore nascosto (vista testo di un p7m, pagina iniziale): niente da riadattare, e PDF.js
+      // non può scorrere una pagina invisibile («offsetParent is not set»).
+      const c = els.viewerContainer;
+      if (c.hidden || !c.offsetParent || !c.clientWidth || !c.clientHeight) return;
       const v = pdfViewer.currentScaleValue;
       if (pdfViewer.pdfDocument && ["auto", "page-width", "page-fit"].includes(v)) pdfViewer.currentScaleValue = v;
     });

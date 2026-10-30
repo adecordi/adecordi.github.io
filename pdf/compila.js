@@ -112,8 +112,17 @@ function askInstructions(name) {
         h("h2", { id: "fillTitle" }, icon("wand"), " Compila con i miei dati"),
         h("p", { class: "fill-doc" }),
         h("p", { class: "fill-hint" }, "Il modulo va al tuo compilatore privato, che lo riempie con i dati che conosce e te lo restituisce da controllare. Firma, consensi e scelte personali restano a te."),
+        // Quali dati usa il compilatore: solo la scheda scelta va all'AI (30/10/2026).
+        h("fieldset", { class: "fill-who" },
+          h("legend", { class: "fill-label" }, "A nome di chi?"),
+          [["personale", "Personale", "i miei dati privati"],
+           ["azienda", "Azienda", "i dati della Vinicola"],
+           ["azienda_io", "Azienda, firmo io", "la Vinicola, con me come firmatario"]].map(([v, t, d]) =>
+            h("label", { class: "fill-who-opt" },
+              h("input", { type: "radio", name: "fillWho", value: v, required: true }),
+              h("span", null, h("strong", null, t), h("small", null, d))))),
         h("label", { class: "fill-label", for: "fillNotes" }, "Istruzioni (facoltative)"),
-        h("textarea", { id: "fillNotes", rows: 3, placeholder: "Es.: è per conto della Vinicola; come recapito usa la PEC" }),
+        h("textarea", { id: "fillNotes", rows: 3, placeholder: "Es.: come recapito usa la PEC; l'IBAN è quello di Intesa" }),
         h("div", { class: "modal-actions" },
           h("button", { class: "btn", type: "submit", value: "cancel", formnovalidate: true }, "Annulla"),
           h("button", { class: "btn primary", type: "submit", value: "ok" }, "Compila"))));
@@ -122,7 +131,9 @@ function askInstructions(name) {
   dialog.querySelector(".fill-doc").textContent = name;
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => {
-      resolve(dialog.returnValue === "ok" ? dialog.querySelector("#fillNotes").value.trim() : null);
+      const who = dialog.querySelector("input[name=fillWho]:checked");
+      resolve(dialog.returnValue === "ok"
+        ? { notes: dialog.querySelector("#fillNotes").value.trim(), profilo: who ? who.value : null } : null);
     }, { once: true });
     dialog.returnValue = "";
     dialog.showModal();
@@ -149,8 +160,9 @@ function fromBase64(b64) {
 export async function compila(file, ui) {
   const cfg = config();
   if (!cfg) return null;
-  const notes = await askInstructions(file.name);
-  if (notes === null) return null;
+  const scelta = await askInstructions(file.name);
+  if (scelta === null) return null;
+  const { notes, profilo } = scelta;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
   ui.busy("Compilo il modulo… (può volerci un minuto)", { onCancel: () => ctrl.abort() });
@@ -160,7 +172,7 @@ export async function compila(file, ui) {
       res = await fetch(cfg.url + "/compila", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
-        body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes }),
+        body: JSON.stringify({ nome: file.name, pdf: toBase64(file.bytes), istruzioni: notes, profilo }),
         signal: ctrl.signal,
         // Chrome ed Edge: da una pagina https un indirizzo http della rete locale si può chiamare
         // solo dichiarandolo (e con il permesso «rete locale»). Gli altri browser ignorano l'opzione.

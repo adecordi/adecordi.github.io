@@ -1108,3 +1108,12 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 
 /* Menu dopo la selezione: va a capo se lo schermo è stretto (telefono). */
 .copy-pill { flex-wrap: wrap; max-width: calc(100vw - 16px); border-radius: 14px; }
+
+/* «A nome di chi?» nella finestra Compila */
+.fill-who { margin: 0 0 14px; padding: 0; border: 0; }
+.fill-who-opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.fill-who-opt + .fill-who-opt { margin-top: 6px; }
+.fill-who-opt:has(input:checked) { border-color: var(--accent); background: var(--tb-hover, rgb(164 22 26 / 0.08)); }
+.fill-who-opt input { flex: none; width: 17px; height: 17px; min-height: 0; margin: 2px 0 0; padding: 0; accent-color: #a4161a; }
+.fill-who-opt span { flex: 1; display: grid; gap: 1px; text-align: left; }
+.fill-who-opt small { color: var(--muted); font-size: 12.5px; }
