@@ -30,10 +30,11 @@
     --text: #e7e9ee;
     --muted: #a2a9b7;
     --border: #383c46;
-    --accent: #ef8a8c;
-    --accent-hover: #f6a9ab;
+    /* rosso vero e non rosa (Alessandro, 30/10/2026: «quel rosino non mi piace»), chiaro quanto basta per il fondo scuro */
+    --accent: #ec5a5f;
+    --accent-hover: #f07378;
     --accent-text: #2a0b0c;
-    --icon-acc: #ef8a8c;
+    --icon-acc: #e5484d;
     --viewer-bg: #2f333b;
     --ok: #5fd39a;
     --ok-bg: #173527;
