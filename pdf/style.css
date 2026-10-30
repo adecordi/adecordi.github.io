@@ -1164,7 +1164,9 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 .esempi-lista { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .esempi-lista .btn { background: var(--surface); }
 .esempi-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
-.esempi-lista .btn { font-size: 13px; padding: 7px 11px; justify-content: flex-start; text-align: left; line-height: 1.25; }
+.esempi-lista .btn { font-size: 13px; padding: 7px 11px; justify-content: flex-start; text-align: left; line-height: 1.25;
+  white-space: normal; height: auto; min-height: 36px; min-width: 0; }
+.esempi-lista .btn span { min-width: 0; overflow-wrap: anywhere; }
 .esempi-nota .icon { width: 14px; height: 14px; vertical-align: -2px; }
 .esempi-nota { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
 body.outlook .esempi { display: none; }
