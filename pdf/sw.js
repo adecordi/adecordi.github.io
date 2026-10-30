@@ -1,6 +1,6 @@
 // Service worker: rende il lettore utilizzabile anche offline e riceve i file
 // condivisi da altre app (Android). Aggiornare VERSION a ogni modifica dei file.
-const VERSION = "2026-10-30.3";
+const VERSION = "2026-10-30.5";
 const CACHE = `lettore-pdf-${VERSION}`;
 const SHARED_CACHE = "lettore-pdf-condivisi";
 
@@ -36,10 +36,26 @@ const CORE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(CORE.map((url) => new Request(url, { cache: "reload" }))))
-      // Subito attiva: su iPad Safari e l'app restano aperti in sottofondo e la versione nuova
-      // aspetterebbe all'infinito che si chiudessero (29/10/2026).
-      .then(() => self.skipWaiting())
+      // La versione nuova aspetta il tasto «Aggiorna» (30/10/2026). Eccezione: se c'è ancora una
+      // versione di prima del tasto, che non saprebbe mostrarlo, questa si attiva da sola.
+      .then(async () => {
+        const vecchie = (await caches.keys()).filter((k) => /^lettore-pdf-\d/.test(k) && k !== CACHE);
+        if (vecchie.some((k) => primaDelTasto(k.slice("lettore-pdf-".length)))) await self.skipWaiting();
+      })
   );
+});
+
+// «2026-10-30.4» e prima: versioni senza il tasto «Aggiorna» che compare da solo.
+function primaDelTasto(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})\.(\d+)$/.exec(v);
+  if (!m) return false;
+  const giorno = m[1] + m[2] + m[3];
+  return giorno < "20261030" || (giorno === "20261030" && Number(m[4]) < 5);
+}
+
+// Il lettore chiede di attivare la versione nuova quando si preme «Aggiorna».
+self.addEventListener("message", (event) => {
+  if (event.data === "attiva") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {

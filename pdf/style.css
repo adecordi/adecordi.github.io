@@ -1148,3 +1148,8 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 .fill-value { font-family: "Courier New", Courier, monospace; color: #0038c7; font-weight: 600; }
 .fill-wait { color: var(--muted); font-style: italic; }
 .fill-ok { color: var(--ok); font-weight: 600; font-size: 13px; }
+
+/* «Aggiorna»: compare solo quando c'è una versione nuova e resta finché non si preme */
+#btnUpdate.c-e-nuova { background: var(--accent) !important; color: #fff; --icon-acc: #fff; animation: aggiorna-pulsa 2.4s ease-in-out infinite; }
+@keyframes aggiorna-pulsa { 0%, 100% { box-shadow: 0 0 0 0 rgb(164 22 26 / 0.45); } 50% { box-shadow: 0 0 0 7px rgb(164 22 26 / 0); } }
+@media (prefers-reduced-motion: reduce) { #btnUpdate.c-e-nuova { animation: none; } }

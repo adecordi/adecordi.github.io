@@ -31,6 +31,7 @@ const els = {
   btnBox: $("btnBox"),
   btnSelText: $("btnSelText"),
   btnNote: $("btnNote"),
+  btnUpdate: $("btnUpdate"),
   btnUndo: $("btnUndo"),
   btnRedo: $("btnRedo"),
   signBarText: $("signBarText"),
@@ -1058,6 +1059,59 @@ window.addEventListener("keydown", (e) => {
   for (const p of pannelli) mo.observe(p, { attributes: true, attributeFilter: ["hidden"] });
 }
 
+/* ------------------------------------------------------- Aggiorna */
+
+// Alessandro, 30/10/2026: qualche minuto dopo l'apertura (e poi ogni tanto) si cerca una versione
+// nuova; se c'è compare «Aggiorna» e resta finché non lo si preme. La versione nuova si attiva solo
+// allora: niente pagina che cambia sotto le mani.
+let aggiornaPremuto = false;
+
+function mostraAggiorna() {
+  els.btnUpdate.hidden = false;
+  els.btnUpdate.classList.add("c-e-nuova");
+}
+
+async function cercaAggiornamenti() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return;
+    if (reg.waiting && navigator.serviceWorker.controller) return mostraAggiorna();
+    await reg.update();
+    const nuovo = reg.installing || reg.waiting;
+    if (!nuovo || !navigator.serviceWorker.controller) return;
+    if (nuovo.state === "installed") return mostraAggiorna();
+    nuovo.addEventListener("statechange", () => {
+      if (nuovo.state === "installed") mostraAggiorna();
+    });
+  } catch { /* senza rete: si riprova al prossimo giro */ }
+}
+
+async function aggiorna() {
+  if (doc && doc.pdf && doc.pdf.annotationStorage.size > 0
+    && !confirm("Il documento ha modifiche non salvate (firma, note, campi). Aggiornando la pagina si perdono. Continuo?")) return;
+  aggiornaPremuto = true;
+  busy("Aggiorno C.A.R.T.A.…");
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg && reg.waiting) {
+      reg.waiting.postMessage("attiva"); // poi «controllerchange» ricarica la pagina
+      setTimeout(() => location.reload(), 4000); // se il cambio non arriva, si ricarica comunque
+      return;
+    }
+  } catch { /* si ricarica comunque */ }
+  location.reload();
+}
+
+els.btnUpdate.addEventListener("click", aggiorna);
+if ("serviceWorker" in navigator && !OUTLOOK) {
+  setTimeout(cercaAggiornamenti, 3 * 60 * 1000);
+  setInterval(cercaAggiornamenti, 15 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") cercaAggiornamenti(); // l'iPad riprende l'app dal sottofondo
+  });
+}
+
 /* ------------------------------------------------- App installabile */
 
 let installPrompt = null;
@@ -1082,8 +1136,8 @@ if ("serviceWorker" in navigator && window.isSecureContext && !OUTLOOK) {
   // Versione nuova attiva: senza documento aperto si ricarica da sola, altrimenti lo si dice.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (primo) return; // prima installazione, non un aggiornamento
-    if (!doc) location.reload();
-    else toast("C'è una versione nuova di C.A.R.T.A.: si vedrà alla prossima apertura.");
+    if (aggiornaPremuto) location.reload();
+    else mostraAggiorna(); // passaggio da una versione senza il tasto: lo si mostra e si aspetta
   });
 }
 
