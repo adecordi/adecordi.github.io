@@ -1211,6 +1211,21 @@ if (window.chrome && window.chrome.webview) {
   window.chrome.webview.postMessage("carta-pronta");
 }
 
+// Estensione «Apri in C.A.R.T.A.» per Chrome ed Edge: il suo script nella pagina consegna il PDF con un
+// messaggio (vedi carta_estensione\consegna.js). Solo messaggi dalla pagina stessa, una volta sola.
+let estensioneConsegnato = false;
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (e.source !== window || e.origin !== location.origin || !d || d.tipo !== "carta-estensione-file" || !d.b64) return;
+  window.postMessage({ tipo: "carta-estensione-ricevuto" }, location.origin);
+  if (estensioneConsegnato) return;
+  estensioneConsegnato = true;
+  const s = atob(d.b64);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  openBytes(bytes, d.nome || "documento.pdf");
+});
+
 if (compilatore.linkFromHash()) {
   toast("Compilatore collegato: il pulsante «Compila» compare quando apri un PDF.");
 }
