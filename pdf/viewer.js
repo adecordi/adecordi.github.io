@@ -423,8 +423,13 @@ export function endImage() {
     els.viewer.removeEventListener("touchmove", touchGuard, { capture: true });
   }
   touchGuard = null;
-  if (pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.NONE) {
-    pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
+  // senza documento (chiamata da closeDocument mentre se ne apre uno) PDF.js rifiuta il cambio di modalità
+  if (pdfViewer.pdfDocument && pdfViewer.annotationEditorMode > pdfjsLib.AnnotationEditorType.NONE) {
+    try {
+      pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE };
+    } catch (e) {
+      console.warn("modalità editor:", e);
+    }
   }
 }
 

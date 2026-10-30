@@ -72,7 +72,21 @@ const { FX, BASE, check, watchErrors } = require("./common.cjs");
   await page.tap(".page[data-page-number='1']", { position: { x: f.x - pg.x + f.width / 2, y: f.y - pg.y + f.height / 2 } });
   await page.waitForTimeout(500);
   check("toccando la firma fissata si riprende", await page.isVisible("#signBar"));
-  await page.tap("#signDone");
+  // Senza «Fatto» si apre un altro documento (30/10/2026: sull'iPad la selezione restava spenta)
+  page.once("dialog", (d) => d.accept());
+  await page.setInputFiles("#fileInput", FX + "doc.pdf");
+  await page.waitForSelector(".uscita-dialog[open]", { timeout: 5000 }).catch(() => {});
+  if (await page.isVisible(".uscita-dialog")) await page.click(".uscita-dialog button[value=esci]");
+  await page.waitForSelector(".page[data-page-number='1'] .textLayer span");
+  await page.waitForTimeout(500);
+  check("cambiando documento la modalità firma si chiude", !(await page.$eval("#viewerContainer", (c) => c.classList.contains("sign-mode"))));
+  const parola = await page.locator(".page[data-page-number='1'] .textLayer span").first().boundingBox();
+  const yy = Math.round(parola.y + parola.height / 2);
+  await page.mouse.move(Math.round(parola.x + 1), yy);
+  await page.mouse.down();
+  await page.mouse.move(Math.round(parola.x + parola.width - 1), yy, { steps: 6 });
+  await page.mouse.up();
+  check("e il testo si seleziona", (await page.evaluate(() => getSelection().toString())).trim().length > 0);
 
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();

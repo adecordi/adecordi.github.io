@@ -248,6 +248,9 @@ async function closeDocument() {
   els.fillPanel.hidden = true;
   els.sumPanel.hidden = true;
   els.signBar.hidden = true;
+  // la modalità firma spegne la selezione del testo: se si cambia documento senza «Fatto» (succede sull'iPad)
+  // restava spenta anche sul documento nuovo (30/10/2026)
+  if (V) V.endImage();
   els.altView.replaceChildren();
   els.altView.hidden = true;
   if (!old) return;

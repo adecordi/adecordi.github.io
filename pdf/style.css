@@ -744,7 +744,10 @@ body.outlook .welcome { place-items: start center; }
 
 /* Come lo strato di testo di PDF.js: invisibile, ma si seleziona e si copia. */
 .ocrLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; z-index: 0; color-scheme: only light; }
-.ocrLayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; font-family: sans-serif; }
+.ocrLayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; font-family: sans-serif;
+  -webkit-user-select: text; user-select: text; }
+/* come il textLayer di PDF.js: iOS non deve ingrandire da sé il testo nascosto (lo sposterebbe rispetto all'immagine) */
+.ocrLayer { -webkit-text-size-adjust: none; text-size-adjust: none; }
 /* Selezione ben visibile, sul testo vero e su quello riconosciuto. */
 #viewer :is(.textLayer, .ocrLayer) ::selection { background: rgb(35 87 209 / 0.42); }
 /* gli a-capo fra le righe lette stanno in colonna a sinistra: mai colorati (la regola #viewer qui sopra vincerebbe) */
