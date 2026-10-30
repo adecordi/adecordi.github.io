@@ -14,10 +14,11 @@ const SCANSIONE = path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-s
   await page.goto(BASE);
   await page.setInputFiles("#fileInput", SCANSIONE);
   await page.waitForSelector(".page[data-page-number='1'] .ocrLayer span", { timeout: 90000 });
-  await page.click("#btnRotate");
+  await page.waitForSelector("#btnRaddrizza:not([hidden])", { timeout: 30000 }); // compare da solo sulle scansioni storte
+  await page.click("#btnRaddrizza");
   await page.waitForFunction(() => /raddrizzat/.test(document.getElementById("toast").textContent), null, { timeout: 30000 });
   await page.waitForTimeout(800);
-  const riga = page.locator(".page[data-page-number='1'] .ocrLayer span", { hasText: "informativa" }).first();
+  const riga = page.locator(".page[data-page-number='1'] .ocrLayer span", { hasText: "Ragione sociale" }).first();
   await riga.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   const r = await riga.boundingBox();

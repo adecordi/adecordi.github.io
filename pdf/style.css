@@ -1205,3 +1205,10 @@ body.outlook .esempi { display: none; }
 .fill-avviso { margin: 8px 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid #A4161A;
   background: color-mix(in srgb, #A4161A 10%, var(--surface)); color: var(--text); font-size: 14px; }
 .fill-avviso p { margin: 6px 0 0; }
+
+/* «Ruota» su una scansione storta (30/10/2026): gira l'immagine e i campi compilati, non il testo (già letto sulla
+   pagina raddrizzata), né le sottolineature, le note e le firme. Il livello del testo letto torna storto finché la
+   pagina non è raddrizzata: --ocr è il contrario dell'angolo con cui è stata letta. */
+.page[data-raddrizza] .canvasWrapper,
+.page[data-raddrizza] .annotationLayer[data-main-rotation="0"] { transform: rotate(var(--raddrizza)); transform-origin: 50% 50%; }
+.ocrLayer { transform: rotate(calc(var(--raddrizza, 0deg) + var(--ocr, 0deg))); transform-origin: 50% 50%; }

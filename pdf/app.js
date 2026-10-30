@@ -28,6 +28,7 @@ const els = {
   zoomSelect: $("zoomSelect"),
   zoomCustom: $("zoomCustom"),
   btnRotate: $("btnRotate"),
+  btnRaddrizza: $("btnRaddrizza"),
   btnFind: $("btnFind"),
   btnBox: $("btnBox"),
   btnSelText: $("btnSelText"),

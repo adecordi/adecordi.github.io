@@ -239,7 +239,8 @@ function cancellaRighe(canvas, dpi) {
   const img = ctx.getImageData(0, 0, W, H);
   const d = img.data;
   const minimo = Math.round((4 / 25.4) * dpi);
-  const scuro = (i) => d[i] + d[i + 1] + d[i + 2] < 3 * 150;
+  const scuro = (i) => d[i] + d[i + 1] + d[i + 2] < 3 * 170;
+  const tratti = [];
   for (let y = 0; y < H; y++) {
     let x = 0;
     while (x < W) {
@@ -253,20 +254,49 @@ function cancellaRighe(canvas, dpi) {
         if (!scuro((y * W + fine + 1) * 4)) buchi++;
         fine++;
       }
-      if (fine - x + 1 >= minimo) {
-        for (let k = x; k <= fine; k++) {
-          const i = (y * W + k) * 4;
-          d[i] = d[i + 1] = d[i + 2] = 255;
-        }
-      }
+      if (fine - x + 1 >= minimo) tratti.push([y, x, fine]);
       x = fine + 1;
+    }
+  }
+  // si sbianca la riga e anche i suoi bordi grigi (due file sopra e sotto): lasciati lì, Tesseract ci leggeva
+  // parole inventate («PRI MERO», «POSTARE»)
+  for (const [y, x0, x1] of tratti) {
+    for (let dy = -2; dy <= 2; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= H) continue;
+      for (let k = x0; k <= x1; k++) {
+        const i = (yy * W + k) * 4;
+        if (dy === 0 || d[i] + d[i + 1] + d[i + 2] < 3 * 235) d[i] = d[i + 1] = d[i + 2] = 255;
+      }
     }
   }
   ctx.putImageData(img, 0, 0);
 }
 
+// L'immagine della pagina girata di `gradi` attorno al centro (come fa «Ruota» con la pagina a schermo).
+function giraCanvas(canvas, gradi) {
+  const out = document.createElement("canvas");
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate((gradi * Math.PI) / 180);
+  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+  canvas.width = canvas.height = 0;
+  return out;
+}
+
+// Si legge la pagina GIÀ RADDRIZZATA (Alessandro, 30/10/2026: «se lo raddrizzo poi dovresti ragionare sul
+// raddrizzato»): righe orizzontali, niente pezzi di due righe insieme, righe vuote cancellabili a ogni inclinazione.
+// Le posizioni restano in quel riferimento: il livello del testo si gira all'indietro dello stesso angolo
+// (vedi drawOcrLayer), così con la pagina raddrizzata a schermo le due rotazioni si annullano.
 async function recognize(page, textUnits, thorough = false) {
-  const { canvas, toPdf, dpi } = await renderPage(page, OCR_DPI, OCR_MAX_PIXELS);
+  let { canvas, toPdf, dpi } = await renderPage(page, OCR_DPI, OCR_MAX_PIXELS);
+  const angolo = await angoloDaPagina(page);
+  const girata = Math.abs(angolo) >= 0.15;
+  if (girata) canvas = giraCanvas(canvas, angolo);
   cancellaRighe(canvas, dpi);
   const covered = coveredBy(textUnits);
   const worker = await tesseract();
@@ -282,6 +312,7 @@ async function recognize(page, textUnits, thorough = false) {
       }
       await worker.setParameters({ tessedit_pageseg_mode: "3" });
     }
+    lines.angolo = girata ? angolo : 0; // le posizioni sono nel riferimento della pagina raddrizzata
     return lines;
   } finally {
     canvas.width = canvas.height = 0;
@@ -424,6 +455,21 @@ function showStatus(text) {
 // Strato invisibile con il testo riconosciuto: si seleziona come quello di PDF.js,
 // riga per riga (a fine riga si va a capo).
 let measureCtx = null;
+
+// Le parole di una riga in pezzi: un pezzo nuovo dove fra due parole c'è uno spazio vuoto grande (le colonne di un
+// modulo, «Partita IVA ______ Telefono»), così la selezione non copre lo spazio in mezzo.
+function pezzi(line) {
+  const parole = line.words && line.words.length ? line.words : [line];
+  const out = [];
+  for (const w of parole) {
+    const ultimo = out[out.length - 1];
+    const h = w.y1 - w.y0;
+    if (ultimo && w.x0 - ultimo[ultimo.length - 1].x1 < 2.5 * h) ultimo.push(w);
+    else out.push([w]);
+  }
+  return out.map((ws) => makeLine(ws));
+}
+
 function drawOcrLayer(view) {
   const map = pages();
   const d = map && map.get(view.id);
@@ -433,26 +479,28 @@ function drawOcrLayer(view) {
   const vp = view.viewport;
   const layer = document.createElement("div");
   layer.className = "ocrLayer";
-  // Una fascia per PAROLA, al suo posto: con una per riga intera, su una scansione storta la fascia prendeva
-  // l'altezza di due righe e la selezione finiva spostata (30/10/2026). Lo spazio dopo la parola sta nella
-  // fascia stessa: un nodo di testo libero finirebbe in alto a sinistra, come gli a-capo.
+  // Una fascia per pezzo di riga (non per parola: con fasce di una sola parola Chrome in certe righe non
+  // riusciva a selezionare, 30/10/2026). Le righe sono dritte perché lette sulla pagina raddrizzata.
   for (const line of d.ocr) {
-    const parole = line.words && line.words.length ? line.words : [line];
-    parole.forEach((w, i) => {
-      const [x0, y0] = vp.convertToViewportPoint(w.x0, w.y0);
-      const [x1, y1] = vp.convertToViewportPoint(w.x1, w.y1);
+    const ps = pezzi(line);
+    ps.forEach((p, i) => {
+      const [x0, y0] = vp.convertToViewportPoint(p.x0, p.y0);
+      const [x1, y1] = vp.convertToViewportPoint(p.x1, p.y1);
       const width = Math.abs(x1 - x0);
       const height = Math.abs(y1 - y0);
       const span = document.createElement("span");
-      span.textContent = w.text + (i < parole.length - 1 ? " " : "");
+      span.textContent = p.text + (i < ps.length - 1 ? " " : "");
       const size = height * 0.9;
       measureCtx.font = `${size}px sans-serif`;
-      const natural = measureCtx.measureText(w.text).width || 1;
+      const natural = measureCtx.measureText(p.text).width || 1;
       span.style.cssText = `left:${Math.min(x0, x1)}px;top:${Math.min(y0, y1)}px;font-size:${size}px;transform:scaleX(${width / natural})`;
       layer.append(span);
     });
     layer.append(document.createElement("br"));
   }
+  // letto sulla pagina raddrizzata: finché a schermo la pagina è storta, il livello torna nel suo riferimento;
+  // raddrizzata con «Ruota», le due rotazioni si annullano (vedi .ocrLayer nel CSS)
+  if (d.ocr.angolo) layer.style.setProperty("--ocr", `${-d.ocr.angolo}deg`);
   const textLayer = view.div.querySelector(".textLayer");
   if (textLayer) textLayer.after(layer);
   else view.div.append(layer);
@@ -471,8 +519,9 @@ export async function quotaImmagini(view) {
  * righe di testo stanno più «in fila», cioè i punti scuri si concentrano su meno righe orizzontali.
  * Prima a passi di 0,5°, poi di 0,05° attorno al migliore.
  */
-export async function angoloStorto(view) {
-  const page = view.pdfPage;
+export const angoloStorto = (view) => angoloDaPagina(view.pdfPage);
+
+async function angoloDaPagina(page) {
   const vp = page.getViewport({ scale: 1, rotation: 0 });
   const k = Math.min(1000 / vp.width, 2);
   const c = document.createElement("canvas");
@@ -941,9 +990,7 @@ function pickFromSelection() {
   for (let i = 0; i < pdfViewer.pagesCount; i++) {
     const view = pdfViewer.getPageView(i);
     const layer = view && view.div && view.div.querySelector(".textLayer");
-    // pagina raddrizzata da «Ruota»: è girata di qualche grado, le coordinate vanno riportate sulla pagina dritta
-    const m = view && view.div && /rotate\((-?[\d.]+)deg\)/.exec(view.div.style.transform || "");
-    if (layer) views.push({ view, layer, r: layer.getBoundingClientRect(), angolo: m ? parseFloat(m[1]) : 0, div: view.div });
+    if (layer) views.push({ view, layer, r: layer.getBoundingClientRect() });
   }
   for (let i = 0; i < sel.rangeCount; i++) {
     for (const rc of sel.getRangeAt(i).getClientRects()) {
@@ -960,8 +1007,7 @@ function pickFromSelection() {
   return { pages: [...out].map(([view, boxes]) => ({ view, boxes, text })) };
 }
 
-function toPageBox({ layer, r, angolo, div }, { x, y, width: w, height: h }) {
-  if (angolo) return toPageBoxGirata(layer, div, angolo, { x, y, w, h });
+function toPageBox({ layer, r }, { x, y, width: w, height: h }) {
   const { left: lx, top: ly, width: W, height: H } = r;
   switch (layer.getAttribute("data-main-rotation")) {
     case "90": return { x: (y - ly) / H, y: 1 - (x + w - lx) / W, width: h / H, height: w / W };
@@ -969,29 +1015,6 @@ function toPageBox({ layer, r, angolo, div }, { x, y, width: w, height: h }) {
     case "270": return { x: 1 - (y + h - ly) / H, y: (x - lx) / W, width: h / H, height: w / W };
     default: return { x: (x - lx) / W, y: (y - ly) / H, width: w / W, height: h / H };
   }
-}
-
-// Pagina girata di `angolo` gradi attorno al centro (raddrizzata da «Ruota», 30/10/2026: la sottolineatura finiva
-// spostata). Il riquadro del browser è quello allineato agli assi del pezzo girato: se ne ricava il pezzo vero.
-function toPageBoxGirata(layer, div, angolo, { x, y, w, h }) {
-  const a = (angolo * Math.PI) / 180;
-  const c = Math.cos(a);
-  const s = Math.abs(Math.sin(a));
-  const pr = div.getBoundingClientRect();
-  const px = x + w / 2 - (pr.left + pr.width / 2);
-  const py = y + h / 2 - (pr.top + pr.height / 2);
-  // il centro del pezzo, ruotato all'indietro attorno al centro della pagina
-  const ux = px * Math.cos(-a) - py * Math.sin(-a);
-  const uy = px * Math.sin(-a) + py * Math.cos(-a);
-  const k = c * c - s * s;
-  const ww = Math.max(1, (w * c - h * s) / k);
-  const hh = Math.max(1, (h * c - w * s) / k);
-  const W = layer.offsetWidth;
-  const H = layer.offsetHeight;
-  // il livello del testo può non coincidere col bordo della pagina
-  const dx = layer.offsetLeft + div.clientLeft + W / 2 - div.offsetWidth / 2;
-  const dy = layer.offsetTop + div.clientTop + H / 2 - div.offsetHeight / 2;
-  return { x: (ux - dx + W / 2 - ww / 2) / W, y: (uy - dy + H / 2 - hh / 2) / H, width: ww / W, height: hh / H };
 }
 
 // I pezzi presi dal riquadro (coordinate PDF) nello stesso formato.

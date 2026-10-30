@@ -60,14 +60,16 @@ async function pendenza(page, png) {
   const pag = await page.$(".page[data-page-number='1']");
   const prima = await pendenza(page, await pag.screenshot({ path: path.join(SHOTS, "raddrizza-prima.png") }));
   check("la scansione di prova è storta", Math.abs(prima) >= 0.3, `${prima}°`);
-  await page.click("#btnRotate");
+  await page.waitForSelector("#btnRaddrizza:not([hidden])", { timeout: 30000 }); // compare da solo sulle scansioni storte
+  await page.click("#btnRaddrizza");
   await page.waitForFunction(() => /raddrizzat/.test(document.getElementById("toast").textContent), null, { timeout: 30000 });
   await page.waitForTimeout(600);
   // la pagina girata si fotografa dal contenitore, che non gira
   const box = await pag.boundingBox();
   const dopo = await pendenza(page, await page.screenshot({ path: path.join(SHOTS, "raddrizza-dopo.png"),
     clip: { x: box.x + 20, y: box.y + 20, width: box.width - 40, height: box.height - 40 } }));
-  check("dopo «Ruota» la pagina è dritta", Math.abs(dopo) <= 0.15, `${prima}° → ${dopo}°`);
+  check("dopo «Raddrizza» la pagina è dritta", Math.abs(dopo) <= 0.15, `${prima}° → ${dopo}°`);
+  check("e il tasto sparisce", await page.isHidden("#btnRaddrizza"));
 
   // «Compila» apre il modulo compilato: deve restare raddrizzato (30/10/2026: tornava storto)
   await page.click("#btnFill");
@@ -84,6 +86,7 @@ async function pendenza(page, png) {
   const compilato = await pendenza(page, await page.screenshot({ path: path.join(SHOTS, "raddrizza-compilato.png"),
     clip: { x: box2.x + 20, y: box2.y + 20, width: Math.min(box2.width, 700) - 40, height: Math.min(box2.height, 900) - 40 } }));
   check("il modulo compilato si apre già dritto", Math.abs(compilato) <= 0.15, `${compilato}°`);
+  check("sul compilato già raddrizzato «Raddrizza» non compare", await page.isHidden("#btnRaddrizza"));
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();
 })();

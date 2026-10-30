@@ -17,7 +17,8 @@ const SCANSIONE = path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-s
   await page.waitForTimeout(1500);
   const densita = () => page.$eval(".page[data-page-number='1'] canvas", (c) => c.width / c.getBoundingClientRect().width);
   check("pixel giusti all'apertura", Math.abs((await densita()) - 1) < 0.05);
-  await page.click("#btnRotate");
+  await page.waitForSelector("#btnRaddrizza:not([hidden])", { timeout: 30000 }); // compare da solo sulle scansioni storte
+  await page.click("#btnRaddrizza");
   await page.waitForFunction(() => /raddrizzat/.test(document.getElementById("toast").textContent), null, { timeout: 30000 });
   // lo zoom del browser: cambiano insieme densità e larghezza in pixel CSS
   const cdp = await page.context().newCDPSession(page);
@@ -25,7 +26,8 @@ const SCANSIONE = path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-s
   await page.waitForTimeout(2500);
   const d = await densita();
   check("dopo lo zoom del browser si ridisegna a densità 2", Math.abs(d - 2) < 0.05, d.toFixed(2));
-  check("la scansione resta raddrizzata", /rotate\(/.test(await page.$eval(".page[data-page-number='1']", (p) => p.style.transform)));
+  // gira l'immagine (canvasWrapper), non la pagina intera
+  check("la scansione resta raddrizzata", /^matrix/.test(await page.$eval(".page[data-page-number='1'] .canvasWrapper", (c) => getComputedStyle(c).transform)));
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();
 })();

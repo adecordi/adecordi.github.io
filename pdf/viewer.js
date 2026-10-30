@@ -174,15 +174,39 @@ function bindPages() {
   });
   els.btnPrev.addEventListener("click", () => pdfViewer.previousPage());
   els.btnNext.addEventListener("click", () => pdfViewer.nextPage());
-  els.btnRotate.addEventListener("click", async () => {
-    // Scansione storta di qualche grado: il primo tocco la raddrizza dell'angolo giusto (le pagine
-    // scansionate dello stesso documento di solito sono storte allo stesso modo, ma si misura ognuna).
-    if (!raddrizzate.has(pdfViewer.pdfDocument) && await raddrizza()) return;
+  els.btnRotate.addEventListener("click", () => {
     pdfViewer.pagesRotation = (pdfViewer.pagesRotation + 90) % 360;
+  });
+  // «Raddrizza»: compare da solo quando la scansione aperta è storta (Alessandro, 30/10/2026).
+  els.btnRaddrizza.addEventListener("click", async () => {
+    if (await raddrizza()) els.btnRaddrizza.hidden = true;
+  });
+  eventBus.on("pagesinit", () => {
+    els.btnRaddrizza.hidden = true;
+    controllaStorta(pdfViewer.pdfDocument);
   });
 }
 
-// Documenti già raddrizzati, con l'angolo di ogni pagina: il tasto torna a girare di 90°.
+// Aperta una scansione: si misura la prima pagina e, se è storta, compare «Raddrizza» (lo si nota anche con un
+// avviso). Un documento già raddrizzato (il modulo compilato da uno raddrizzato) non lo mostra.
+async function controllaStorta(doc) {
+  try {
+    await new Promise((r) => setTimeout(r, 300)); // la prima pagina deve avere il suo pdfPage
+    const v = pdfViewer.getPageView(0);
+    if (!doc || pdfViewer.pdfDocument !== doc || raddrizzate.has(doc) || !v || !v.pdfPage) return;
+    if ((await testo.quotaImmagini(v)) < 0.5) return;
+    const a = await testo.angoloStorto(v);
+    if (pdfViewer.pdfDocument !== doc || raddrizzate.has(doc) || Math.abs(a) < 0.15) return;
+    const gradi = Math.abs(a).toLocaleString("it-IT", { maximumFractionDigits: 1 });
+    els.btnRaddrizza.title = `Raddrizza la scansione (è storta di ${gradi}°)`;
+    els.btnRaddrizza.hidden = false;
+    ui.toast(`La scansione è storta di ${gradi}°: premi «Raddrizza» per metterla dritta.`);
+  } catch (e) {
+    console.warn("controllo inclinazione:", e);
+  }
+}
+
+// Documenti già raddrizzati, con l'angolo di ogni pagina.
 const raddrizzate = new WeakMap();
 
 /** Gli angoli delle pagine raddrizzate del documento aperto (null se non è stato raddrizzato). */
@@ -191,10 +215,13 @@ export function angoliRaddrizzati() {
   return a && a.some(Boolean) ? a : null;
 }
 
-// la pagina intera (immagine, testo selezionabile, campi) gira insieme, attorno al centro
+// Gira l'IMMAGINE (e i campi compilati, che le appartengono), non la pagina intera: il testo letto dall'OCR è già
+// nel riferimento raddrizzato, e con la pagina intera girata Chrome in certe zone non riusciva a cominciare la
+// selezione (30/10/2026). La rotazione sta nel CSS (vedi .page[data-raddrizza]), così resta anche quando PDF.js
+// ridisegna la pagina dopo uno zoom.
 function giraPagina(v, a) {
-  v.div.style.transformOrigin = "50% 50%";
-  v.div.style.transform = `rotate(${a}deg)`;
+  v.div.dataset.raddrizza = String(a);
+  v.div.style.setProperty("--raddrizza", `${a}deg`);
 }
 
 async function raddrizza() {
@@ -223,11 +250,11 @@ async function raddrizza() {
   }
   raddrizzate.set(doc, angoli);
   if (!girate) {
-    ui.toast("La scansione è già dritta: giro la pagina di 90°.");
+    ui.toast("La scansione è già dritta.");
     return false;
   }
   const gradi = Math.abs(angoloMostrato || 0).toLocaleString("it-IT", { maximumFractionDigits: 2 });
-  ui.toast(girate === 1 ? `Pagina raddrizzata di ${gradi}°.` : `${girate} pagine raddrizzate (questa di ${gradi}°). Premi ancora per girare di 90°.`);
+  ui.toast(girate === 1 ? `Pagina raddrizzata di ${gradi}°.` : `${girate} pagine raddrizzate (questa di ${gradi}°).`);
   return true;
 }
 

@@ -23,6 +23,7 @@
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
+      <symbol id="i-raddrizza" viewBox="0 0 24 24"><rect x="5.5" y="3.5" width="13" height="15" rx="1.5" transform="rotate(-9 12 11)"/><path d="M8 8.5h6M8 12h7" transform="rotate(-9 12 11)"/><path d="M3 21h18" style="stroke:var(--icon-acc,#A4161A)"/><path d="M17.5 3.5a5 5 0 0 1 2 3.5" style="stroke:var(--icon-acc,#A4161A)"/></symbol>
       <symbol id="i-open" viewBox="0 0 24 24"><path d="M3 7.5V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-7l-2-3H5a2 2 0 0 0-2 2.5z"/><path d="M8 14h8" style="stroke:var(--icon-acc,#A4161A)"/></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="m14.5 18-6-6 6-6"/></symbol>
       <symbol id="i-prev" viewBox="0 0 24 24"><g transform="scale(0.09375)"><path d="M39.6 251.5C34.9 249.9 28.6 244.0 25.7 238.5C23.5 234.6 23.5 233.4 22.9 181.0C21.8 91.7 21.9 28.6 23.1 23.1C24.7 15.3 28.9 9.7 35.3 6.5L40.9 3.8L105.7 3.7L170.5 3.5L175.5 6.3C178.5 8.0 190.9 19.3 206.8 34.8L233.0 60.5L233.3 138.5C233.6 236.0 233.6 232.7 232.0 237.4C230.1 243.2 223.3 249.5 216.9 251.4C209.5 253.6 45.8 253.7 39.6 251.5ZM210.6 242.5C215.9 240.9 220.2 237.2 221.9 232.7C222.7 230.8 223.0 203.5 223.0 148.3L223.0 66.8L201.2 67.2C168.6 67.7 169.5 68.5 169.5 35.5L169.5 12.6L165.0 11.2C159.5 9.5 53.0 10.2 46.9 12.0C41.5 13.5 36.9 17.0 34.8 21.2C33.0 24.7 32.9 28.6 33.0 123.2C33.0 177.2 33.3 223.3 33.7 225.5C34.9 233.8 40.1 240.2 47.5 242.8C52.7 244.6 204.4 244.4 210.6 242.5ZM215.0 59.2C214.5 58.3 205.2 48.5 194.5 37.5L174.9 17.5L175.6 34.5C176.5 58.7 176.9 59.2 195.0 60.1C217.4 61.2 216.2 61.2 215.0 59.2Z" style="fill:currentColor;fill-rule:evenodd;stroke:none"/><path d="M109.5 185.8C75.6 158.3 66.0 149.8 66.0 147.0C66.0 144.4 68.8 141.7 89.8 124.1C102.8 113.0 114.3 104.0 115.2 104.0C117.7 104.0 117.5 105.3 113.2 122.1L109.4 136.7L149.9 137.3C174.6 137.7 190.8 138.4 191.4 139.0C191.9 139.5 192.5 142.6 192.8 145.7C193.4 155.7 196.5 155.0 149.9 155.7L109.4 156.3L113.3 171.2C118.2 190.1 117.6 192.3 109.5 185.8Z" style="fill:var(--icon-acc,#A4161A);fill-rule:evenodd;stroke:none"/></g></symbol>
@@ -103,6 +104,7 @@
         </select>
         <button class="btn icon-only" id="btnZoomIn" type="button" title="Ingrandisci (Ctrl++)" aria-label="Ingrandisci"><svg class="icon"><use href="#i-plus"/></svg></button>
         <button class="btn icon-only" id="btnRotate" type="button" title="Ruota le pagine di 90°" aria-label="Ruota le pagine"><svg class="icon"><use href="#i-rotate"/></svg></button>
+        <button class="btn icon-only" id="btnRaddrizza" type="button" title="Raddrizza la scansione" aria-label="Raddrizza la scansione" hidden><svg class="icon"><use href="#i-raddrizza"/></svg></button>
       </div>
       <div class="tb-cluster" role="group" aria-label="Trova">
         <button class="btn icon-only" id="btnFind" type="button" title="Cerca nel documento (Ctrl+F)" aria-label="Cerca nel documento" aria-controls="findbar"><svg class="icon"><use href="#i-search"/></svg></button>

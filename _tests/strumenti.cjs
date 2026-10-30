@@ -35,15 +35,14 @@ const FAKE = "https://compilatore.prova";
 
   // --- Selezione continua col mouse: a fine riga va a capo
   const spans = await page.$$(".page[data-page-number='1'] .ocrLayer span");
-  // dal 30/10/2026 una fascia per parola: la n-esima parola che corrisponde
-  const find = async (re, n = 1) => {
-    for (const s of spans) if (re.test(await s.textContent()) && --n === 0) return s.boundingBox();
+  // dal 30/10/2026 una fascia per pezzo di riga: le due colonne sono pezzi separati («Sinistra 1 alfa», «Destra 1 omega»)
+  const find = async (re) => {
+    for (const s of spans) if (re.test(await s.textContent())) return s.boundingBox();
     return null;
   };
-  // Tesseract mette le due colonne nella stessa riga: «Sinistra 1 alfa Destra 1 omega».
-  const s1 = await find(/^Sinistra/);
-  const fine3 = await find(/^omega/, 3);
-  const s3 = await find(/^Sinistra/, 3);
+  const s1 = await find(/^Sinistra 1/);
+  const fine3 = await find(/^Destra 3/);
+  const s3 = await find(/^Sinistra 3/);
   await drag([s1.x + 2, s1.y + s1.height / 2], [fine3.x + fine3.width - 2, fine3.y + fine3.height / 2]);
   const sel = await page.evaluate(() => getSelection().toString());
   check("selezione continua su più righe", sel.includes("Sinistra 1") && sel.includes("Destra 3") && sel.includes("\n"),
