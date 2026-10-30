@@ -1,10 +1,11 @@
 // «Ruota» su una scansione storta: la pagina mostrata deve uscire DRITTA (30/10/2026: girava nel verso sbagliato).
 // L'inclinazione si misura sullo screenshot della pagina, cioè su quello che si vede davvero.
-const { chromium } = require("playwright");
+const pw = require("playwright");
+const chromium = pw[process.env.BROWSER || "chromium"];
 const path = require("path");
 const { BASE, SHOTS, check, watchErrors } = require("./common.cjs");
 
-const ESEMPIO = path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-scansionato.pdf");
+const ESEMPIO = process.env.ESEMPIO || path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-scansionato.pdf");
 
 // Gradi di cui le righe scendono verso destra (negativo: salgono), dalla concentrazione dei punti scuri.
 async function pendenza(page, png) {

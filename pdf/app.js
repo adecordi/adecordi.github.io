@@ -13,6 +13,7 @@ const els = {
   btnWindow: $("btnWindow"),
   dropCard: $("dropCard"),
   btnBack: $("btnBack"),
+  versione: $("versione"),
   btnInstall: $("btnInstall"),
   fileInput: $("fileInput"),
   docTitle: $("docTitle"),
@@ -1110,6 +1111,17 @@ window.addEventListener("keydown", (e) => {
   const aggiorna = () => document.body.classList.toggle("panel-open", pannelli.some((p) => !p.hidden));
   const mo = new MutationObserver(aggiorna);
   for (const p of pannelli) mo.observe(p, { attributes: true, attributeFilter: ["hidden"] });
+}
+
+// La versione in uso, chiesta al service worker attivo: per capire al volo se «Aggiorna» ha preso la nuova.
+if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+  const canale = new MessageChannel();
+  canale.port1.onmessage = (e) => {
+    if (typeof e.data !== "string") return;
+    els.versione.textContent = `versione ${e.data}`;
+    els.versione.hidden = false;
+  };
+  navigator.serviceWorker.controller.postMessage("versione", [canale.port2]);
 }
 
 /* ------------------------------------------------- Esempi da provare */

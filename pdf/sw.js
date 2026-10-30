@@ -1,6 +1,6 @@
 // Service worker: rende il lettore utilizzabile anche offline e riceve i file
 // condivisi da altre app (Android). Aggiornare VERSION a ogni modifica dei file.
-const VERSION = "2026-10-30.10";
+const VERSION = "2026-10-30.11";
 const CACHE = `lettore-pdf-${VERSION}`;
 const SHARED_CACHE = "lettore-pdf-condivisi";
 
@@ -35,7 +35,14 @@ const CORE = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(CORE.map((url) => new Request(url, { cache: "reload" }))))
+    // Ogni file si chiede con «?v=versione»: un indirizzo nuovo che nemmeno il CDN di GitHub ha in cache (dopo una
+    // pubblicazione può dare per qualche minuto il file vecchio insieme a sw.js nuovo, 30/10/2026). In cache va
+    // sotto l'indirizzo normale, quello che chiede la pagina.
+    caches.open(CACHE).then((cache) => Promise.all(CORE.map(async (url) => {
+      const res = await fetch(new Request(`${url}${url.includes("?") ? "&" : "?"}v=${VERSION}`, { cache: "reload" }));
+      if (!res.ok) throw new Error(`${url}: ${res.status}`);
+      await cache.put(url, res);
+    })))
       // La versione nuova aspetta il tasto «Aggiorna» (30/10/2026). Eccezione: se c'è ancora una
       // versione di prima del tasto, che non saprebbe mostrarlo, questa si attiva da sola.
       .then(async () => {
@@ -56,6 +63,7 @@ function primaDelTasto(v) {
 // Il lettore chiede di attivare la versione nuova quando si preme «Aggiorna».
 self.addEventListener("message", (event) => {
   if (event.data === "attiva") self.skipWaiting();
+  else if (event.data === "versione" && event.ports[0]) event.ports[0].postMessage(VERSION);
 });
 
 self.addEventListener("activate", (event) => {

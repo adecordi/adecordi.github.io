@@ -338,6 +338,7 @@ body.dragging .drop-card { border: 2px dashed var(--accent); background: color-m
 body.outlook .brand { display: none; }
 .drop-hint { margin: 0 0 18px; color: var(--muted); }
 .formats { margin: 22px 0 0; color: var(--muted); font-size: 12.5px; }
+.versione { margin: 10px 0 0; color: var(--muted); font-size: 11px; opacity: .75; }
 .features {
   margin: 24px 0 8px;
   padding: 20px 0 0;
