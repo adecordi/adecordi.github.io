@@ -51,7 +51,9 @@ export function linkFromHash() {
     if (prima && prima.url !== nuovo
       && !confirm(`Questo link collega C.A.R.T.A. a un altro compilatore:\n${u.host}\n\nAl posto di ${new URL(prima.url).host}. `
         + "I documenti da compilare, riassumere o spiegare andranno lì. Continuo?")) return false;
-    localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave }));
+    // «solo=azienda»: il link dei colleghi, che compilano solo a nome della Vinicola
+    const solo = p.get("solo") === "azienda" ? "azienda" : null;
+    localStorage.setItem(STORE, JSON.stringify({ url: u.href.replace(/\/$/, ""), chiave, solo }));
     return true;
   } catch {
     return false;
@@ -133,6 +135,12 @@ function askInstructions(name) {
     document.body.append(dialog);
   }
   dialog.querySelector(".fill-doc").textContent = name;
+  // Colleghi: solo «Azienda», già scelta.
+  const soloAzienda = (config() || {}).solo === "azienda";
+  for (const r of dialog.querySelectorAll("input[name=fillWho]")) {
+    r.closest("label").hidden = soloAzienda && r.value !== "azienda";
+    if (soloAzienda) r.checked = r.value === "azienda";
+  }
   const chi = dialog.querySelector("#fillChi");
   try {
     chi.value = localStorage.getItem(CHI) || "";
@@ -386,7 +394,7 @@ export function renderReport(panel, body, report, azioni = {}) {
   const inseriti = [];
   const salva = h("div", { class: "fill-salva", hidden: true });
   const chiediSalva = () => {
-    if (!inseriti.length) {
+    if (!inseriti.length || report.collega) { // i colleghi non salvano in cassaforte
       salva.hidden = true;
       return;
     }
