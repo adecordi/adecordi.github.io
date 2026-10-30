@@ -123,6 +123,8 @@ const FAKE = "https://compilatore.prova";
 
   // --- Compilazione con un compilatore finto
   let request = null;
+  let cercato = null;
+  const richieste = [];
   let riassunto = null;
   await page.route(FAKE + "/**", async (route) => {
     const req = route.request();
@@ -135,6 +137,12 @@ const FAKE = "https://compilatore.prova";
         body: JSON.stringify({ riassunto: "**In breve**\nDocumento di prova.\n**Punti principali**\n- tre pagine (p. 1)\n- righe ripetute" }),
       });
     }
+    if (req.url().endsWith("/cerca")) {
+      cercato = JSON.parse(req.postData());
+      return route.fulfill({ status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ trovato: true, valore: "CR-28313", fonte: "visura del 17/09/2026", certezza: "alta", nota: "" }) });
+    }
+    richieste.push(JSON.parse(req.postData()));
     request = { auth: req.headers().authorization, body: JSON.parse(req.postData()) };
     await route.fulfill({
       status: 200,
@@ -143,7 +151,7 @@ const FAKE = "https://compilatore.prova";
         pdf: fs.readFileSync(FX + "doc.pdf").toString("base64"),
         metodo: "campi",
         compilati: [{ campo: "Cognome", valore: "ROSSI", pagina: 1 }],
-        mancanti: [{ campo: "Firma", motivo: "da fare a mano" }],
+        mancanti: [{ campo: "Firma", motivo: "da fare a mano" }, { campo: "Numero REA", motivo: "non nelle fonti" }],
       }),
     });
   });
@@ -161,8 +169,21 @@ const FAKE = "https://compilatore.prova";
   await page.waitForSelector("#fillPanel:not([hidden])", { timeout: 10000 });
   check("richiesta con chiave e istruzioni", request && request.auth === "Bearer prova123" && request.body.istruzioni === "per la Vinicola" && request.body.profilo === "azienda" && request.body.pdf.length > 100);
   check("si apre il modulo compilato", (await page.textContent("#docTitle")) === "doc (compilato).pdf");
+  // Dati mancanti: «Firma ora» per la firma, «Lo scrivo io» / «Cercalo» per il resto
+  check("firma: «Firma ora»", (await page.textContent("#fillBody")).includes("Firma ora"));
+  const voceRea = page.locator("#fillBody li", { hasText: "Numero REA" });
+  await voceRea.locator("button", { hasText: "Cercalo" }).click();
+  await voceRea.locator(".fill-value").waitFor({ timeout: 10000 });
+  check("Cercalo: valore e fonte", (await voceRea.textContent()).includes("CR-28313") && (await voceRea.textContent()).includes("visura")
+    && cercato && cercato.campo === "Numero REA" && cercato.profilo === "azienda");
+  await voceRea.locator("button", { hasText: "Usa questo dato" }).click();
+  await page.click("#fillBody button:has-text('Inserisci i dati trovati')");
+  await page.waitForFunction(() => document.getElementById("busy").hidden);
+  await page.waitForTimeout(500);
+  check("ricompilato col dato trovato", richieste.length === 2 && richieste[1].istruzioni.includes("Numero REA: CR-28313")
+    && richieste[1].profilo === "azienda", richieste.length ? JSON.stringify(richieste[richieste.length - 1].istruzioni) : "");
   const report = await page.textContent("#fillBody");
-  check("riepilogo: compilati e da fare", report.includes("ROSSI") && report.includes("Da completare a mano") && report.includes("Firma"));
+  check("riepilogo: compilati e da fare", report.includes("ROSSI") && report.includes("Da completare") && report.includes("Firma"));
   await page.screenshot({ path: SHOTS + "42-compilato.png" });
 
   // --- Riassumi (stesso compilatore finto)

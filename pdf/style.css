@@ -1137,3 +1137,14 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
   .sign-dialog h2 { margin-bottom: 6px; }
   .sign-alt .sign-typed { flex-basis: 100%; }
 }
+
+/* Riepilogo della compilazione: per ogni dato mancante «Lo scrivo io» / «Cercalo» */
+.fill-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.fill-actions .btn { min-height: 32px; padding: 0 10px; font-size: 13.5px; }
+.fill-found { display: grid; gap: 3px; margin-top: 6px; font-size: 13.5px; }
+.fill-found:empty { display: none; }
+.fill-found small { color: var(--muted); }
+.fill-found .btn { justify-self: start; min-height: 30px; padding: 0 10px; font-size: 13px; }
+.fill-value { font-family: "Courier New", Courier, monospace; color: #0038c7; font-weight: 600; }
+.fill-wait { color: var(--muted); font-style: italic; }
+.fill-ok { color: var(--ok); font-weight: 600; font-size: 13px; }

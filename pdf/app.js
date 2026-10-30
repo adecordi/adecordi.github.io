@@ -803,9 +803,24 @@ async function fillForm() {
     return;
   }
   if (!result) return;
+  await mostraCompilato(result);
+}
+
+async function mostraCompilato(result) {
   await openBytes(result.bytes, result.name);
   els.sigPanel.hidden = true;
-  compilatore.renderReport(els.fillPanel, els.fillBody, result.report);
+  compilatore.renderReport(els.fillPanel, els.fillBody, result.report, {
+    scrivoIo: () => addNote(),
+    firma: () => addSignature(),
+    inserisci: async (dati) => {
+      try {
+        const r = await compilatore.ricompila(dati, { busy, idle, toast });
+        if (r) await mostraCompilato(r);
+      } catch (e) {
+        toast(e.message || String(e), "error");
+      }
+    },
+  });
 }
 
 async function summarize() {

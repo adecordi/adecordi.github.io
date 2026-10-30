@@ -157,12 +157,56 @@ function fromBase64(b64) {
  * @param {{ busy: Function, idle: Function, toast: Function }} ui
  * @returns {Promise<null | { bytes: Uint8Array, name: string, report: object }>}
  */
+let ultima = null; // { file, notes, profilo }: per ricompilare con i dati trovati
+
 export async function compila(file, ui) {
   const cfg = config();
   if (!cfg) return null;
   const scelta = await askInstructions(file.name);
   if (scelta === null) return null;
   const { notes, profilo } = scelta;
+  ultima = { file, notes, profilo };
+  return invia(file, notes, profilo, ui);
+}
+
+/** Ricompila il modulo originale aggiungendo alle istruzioni i dati trovati («campo: valore»). */
+export async function ricompila(dati, ui) {
+  if (!ultima) throw new Error("Non trovo il modulo di partenza: riapri il PDF e ricompila.");
+  const righe = dati.map((d) => `- ${d.campo}: ${d.valore}`).join("\n");
+  ultima.notes = [ultima.notes, "Dati trovati e confermati dall'utente, da usare nei campi indicati:\n" + righe].filter(Boolean).join("\n");
+  return invia(ultima.file, ultima.notes, ultima.profilo, ui);
+}
+
+/** «Cercalo»: un dato mancante cercato dal compilatore in Files Comuni, OneDrive e posta. */
+export async function cercaDato(campo, motivo) {
+  const cfg = config();
+  if (!cfg) throw new Error("Per cercare collega prima il compilatore.");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  try {
+    let res;
+    try {
+      res = await fetch(cfg.url + "/cerca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
+        body: JSON.stringify({ campo, motivo, nome: ultima ? ultima.file.name : "", profilo: ultima ? ultima.profilo : null }),
+        signal: ctrl.signal,
+        ...addressSpace(cfg.url),
+      });
+    } catch (e) {
+      throw new Error(e.name === "AbortError" ? "Ricerca troppo lunga: riprova." : "Compilatore non raggiungibile.");
+    }
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function invia(file, notes, profilo, ui) {
+  const cfg = config();
+  if (!cfg) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
   ui.busy("Compilo il modulo… (può volerci un minuto)", { onCancel: () => ctrl.abort() });
@@ -317,17 +361,55 @@ export function renderSummary(panel, body, md, name, kind = "riassunto") {
 }
 
 /** Riquadro con quello che è stato compilato e quello che resta da fare a mano. */
-export function renderReport(panel, body, report) {
+export function renderReport(panel, body, report, azioni = {}) {
   const compilati = report.compilati || [];
   const mancanti = report.mancanti || [];
+  const trovati = []; // dati trovati e confermati, da inserire tutti insieme
+  const inserisci = h("button", { class: "btn primary", type: "button", hidden: true,
+    onclick: () => azioni.inserisci && azioni.inserisci(trovati) }, "Inserisci i dati trovati");
+  const voce = (m) => {
+    const stato = h("div", { class: "fill-found" });
+    const firma = /firm/i.test(m.campo);
+    const bottoni = h("div", { class: "fill-actions" },
+      firma
+        ? h("button", { class: "btn", type: "button", onclick: () => azioni.firma && azioni.firma() }, "Firma ora")
+        : [h("button", { class: "btn", type: "button", onclick: () => azioni.scrivoIo && azioni.scrivoIo() }, "Lo scrivo io"),
+          h("button", { class: "btn", type: "button", onclick: async (e) => {
+            const b = e.currentTarget;
+            b.disabled = true;
+            stato.replaceChildren(h("span", { class: "fill-wait" }, "Cerco in Files Comuni, OneDrive e posta… (circa un minuto)"));
+            try {
+              const r = await cercaDato(m.campo, m.motivo || "");
+              if (!r.trovato) {
+                stato.replaceChildren(h("span", null, "Non trovato. ", r.nota || ""));
+                b.disabled = false;
+                return;
+              }
+              const dato = { campo: m.campo, valore: r.valore };
+              stato.replaceChildren(
+                h("span", { class: "fill-value" }, r.valore),
+                h("small", null, `Fonte: ${r.fonte || "?"} · certezza ${r.certezza || "?"}`),
+                r.nota ? h("small", null, r.nota) : null,
+                h("button", { class: "btn", type: "button", onclick: (ev) => {
+                  trovati.push(dato);
+                  ev.currentTarget.replaceWith(h("span", { class: "fill-ok" }, "✓ da inserire"));
+                  inserisci.hidden = false;
+                } }, "Usa questo dato"));
+            } catch (err) {
+              stato.replaceChildren(h("span", null, err.message || String(err)));
+              b.disabled = false;
+            }
+          } }, "Cercalo")]);
+    return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null, bottoni, stato);
+  };
   body.replaceChildren(
     h("p", { class: "fill-summary" },
       compilati.length ? `${compilati.length} ${compilati.length === 1 ? "campo compilato" : "campi compilati"}` : "Nessun campo compilato",
       report.metodo === "posizioni" ? " (modulo senza campi: testo aggiunto sopra la pagina, puoi spostarlo)." : "."),
-    h("p", { class: "fill-hint" }, "Controlla tutto prima di salvarlo o mandarlo."),
-    mancanti.length ? h("section", null, h("h3", null, "Da completare a mano"),
-      h("ul", { class: "fill-list todo" }, mancanti.map((m) =>
-        h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null)))) : null,
+    h("p", { class: "fill-hint" }, "In blu, a macchina da scrivere, quello che ho scritto io: controlla tutto prima di salvarlo o mandarlo."),
+    mancanti.length ? h("section", null, h("h3", null, "Da completare"),
+      h("p", { class: "fill-hint" }, "Per ogni dato: lo scrivi tu sul modulo, oppure lo cerco io nei Files Comuni, su OneDrive e nella posta."),
+      h("ul", { class: "fill-list todo" }, mancanti.map(voce)), inserisci) : null,
     compilati.length ? h("section", null, h("h3", null, "Compilati"),
       h("ul", { class: "fill-list" }, compilati.map((c) =>
         h("li", null, h("strong", null, c.campo), h("span", null, String(c.valore)),
