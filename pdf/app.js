@@ -1059,6 +1059,25 @@ window.addEventListener("keydown", (e) => {
   for (const p of pannelli) mo.observe(p, { attributes: true, attributeFilter: ["hidden"] });
 }
 
+/* ------------------------------------------------- Esempi da provare */
+
+// Pagina iniziale: due moduli di prova (fac-simile) da aprire con un clic e compilare.
+for (const b of document.querySelectorAll("[data-esempio]")) {
+  b.addEventListener("click", async () => {
+    busy("Apro l'esempio…");
+    try {
+      const res = await fetch(b.dataset.esempio);
+      if (!res.ok) throw new Error(`errore ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      idle();
+      await openBytes(bytes, b.dataset.nome);
+    } catch (e) {
+      idle();
+      toast(`Non riesco ad aprire l'esempio: ${e.message || e}`, "error");
+    }
+  });
+}
+
 /* ------------------------------------------------------- Aggiorna */
 
 // Alessandro, 30/10/2026: qualche minuto dopo l'apertura (e poi ogni tanto) si cerca una versione

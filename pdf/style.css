@@ -1153,3 +1153,11 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 #btnUpdate.c-e-nuova { background: var(--accent) !important; color: #fff; --icon-acc: #fff; animation: aggiorna-pulsa 2.4s ease-in-out infinite; }
 @keyframes aggiorna-pulsa { 0%, 100% { box-shadow: 0 0 0 0 rgb(164 22 26 / 0.45); } 50% { box-shadow: 0 0 0 7px rgb(164 22 26 / 0); } }
 @media (prefers-reduced-motion: reduce) { #btnUpdate.c-e-nuova { animation: none; } }
+
+/* Pagina iniziale: «Prova con un esempio» */
+.esempi { margin: 18px 0 4px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2); text-align: center; }
+.esempi-titolo { margin: 0 0 10px; font-family: "Josefin Sans", system-ui, sans-serif; font-weight: 600; font-size: 15px; }
+.esempi-lista { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.esempi-lista .btn { background: var(--surface); }
+.esempi-nota { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
+body.outlook .esempi { display: none; }
