@@ -18,14 +18,17 @@ const SCANSIONE = path.join(__dirname, "..", "pdf", "esempi", "modulo-di-prova-s
   await page.click("#btnRaddrizza");
   await page.waitForFunction(() => /raddrizzat/.test(document.getElementById("toast").textContent), null, { timeout: 30000 });
   await page.waitForTimeout(800);
-  const riga = page.locator(".page[data-page-number='1'] .ocrLayer span", { hasText: "Ragione sociale" }).first();
+  const riga = page.locator(".page[data-page-number='1'] .ocrLayer span", { hasText: "informativa" }).first();
   await riga.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   const r = await riga.boundingBox();
   // trascinando con il mouse sulla riga, dall'inizio alla fine della scritta
-  await page.mouse.move(r.x + 2, r.y + r.height / 2);
+  // coordinate INTERE, come un mouse vero: con i decimali Chrome arrotonda il punto di partenza e su alcune
+  // parole la selezione non parte (era un artefatto della prova, non un difetto per chi usa il mouse)
+  const yy = Math.round(r.y + r.height / 2);
+  await page.mouse.move(Math.round(r.x + 2), yy);
   await page.mouse.down();
-  await page.mouse.move(r.x + r.width - 2, r.y + r.height / 2, { steps: 8 });
+  await page.mouse.move(Math.round(r.x + r.width - 2), yy, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(400);
   // niente a-capo colorati: il colore della selezione sugli a-capo è trasparente

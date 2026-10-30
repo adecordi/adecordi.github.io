@@ -29,9 +29,10 @@ const ETICHETTE = /Ragione sociale\s*\n\s*Sede legale\s*\n\s*Sede dello stabilim
     check("nessuna riga vuota ____ letta come testo", senza.length === 0, senza.slice(0, 5).map((t) => JSON.stringify(t)).join(" "));
     // come nella foto di Alessandro: da «Ragione sociale» trascinando giù per qualche riga
     const inizio = await page.locator(".page[data-page-number='1'] .ocrLayer span", { hasText: "Ragione" }).first().boundingBox();
-    await page.mouse.move(inizio.x + 2, inizio.y + inizio.height / 2);
+    const y0 = Math.round(inizio.y + inizio.height / 2); // coordinate intere, come un mouse vero
+    await page.mouse.move(Math.round(inizio.x + 2), y0);
     await page.mouse.down();
-    await page.mouse.move(inizio.x + 400, inizio.y + inizio.height / 2 + 90, { steps: 10 });
+    await page.mouse.move(Math.round(inizio.x + 400), y0 + 90, { steps: 10 });
     await page.mouse.up();
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOTS, `ocr-${nome}.png`), clip: { x: Math.max(0, inizio.x - 30), y: Math.max(0, inizio.y - 40), width: 900, height: 200 } });
