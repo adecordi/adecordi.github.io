@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 
-const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs", "strumenti.cjs", "annota.cjs", "tocco.cjs", "raddrizza.cjs", "uscita.cjs", "colleghi.cjs", "nitido.cjs"];
+const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs", "strumenti.cjs", "annota.cjs", "tocco.cjs", "raddrizza.cjs", "uscita.cjs", "colleghi.cjs", "nitido.cjs", "sottolinea_storta.cjs"];
 const selected = process.argv.slice(2).length ? process.argv.slice(2).map((t) => TESTS.find((x) => x.startsWith(t)) || t) : TESTS;
 
 if (!fs.existsSync(path.join(__dirname, "fixtures", "out", "scansione.pdf"))) {

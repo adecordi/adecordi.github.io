@@ -893,7 +893,9 @@ function pickFromSelection() {
   for (let i = 0; i < pdfViewer.pagesCount; i++) {
     const view = pdfViewer.getPageView(i);
     const layer = view && view.div && view.div.querySelector(".textLayer");
-    if (layer) views.push({ view, layer, r: layer.getBoundingClientRect() });
+    // pagina raddrizzata da «Ruota»: è girata di qualche grado, le coordinate vanno riportate sulla pagina dritta
+    const m = view && view.div && /rotate\((-?[\d.]+)deg\)/.exec(view.div.style.transform || "");
+    if (layer) views.push({ view, layer, r: layer.getBoundingClientRect(), angolo: m ? parseFloat(m[1]) : 0, div: view.div });
   }
   for (let i = 0; i < sel.rangeCount; i++) {
     for (const rc of sel.getRangeAt(i).getClientRects()) {
@@ -910,7 +912,8 @@ function pickFromSelection() {
   return { pages: [...out].map(([view, boxes]) => ({ view, boxes, text })) };
 }
 
-function toPageBox({ layer, r }, { x, y, width: w, height: h }) {
+function toPageBox({ layer, r, angolo, div }, { x, y, width: w, height: h }) {
+  if (angolo) return toPageBoxGirata(layer, div, angolo, { x, y, w, h });
   const { left: lx, top: ly, width: W, height: H } = r;
   switch (layer.getAttribute("data-main-rotation")) {
     case "90": return { x: (y - ly) / H, y: 1 - (x + w - lx) / W, width: h / H, height: w / W };
@@ -918,6 +921,29 @@ function toPageBox({ layer, r }, { x, y, width: w, height: h }) {
     case "270": return { x: 1 - (y + h - ly) / H, y: (x - lx) / W, width: h / H, height: w / W };
     default: return { x: (x - lx) / W, y: (y - ly) / H, width: w / W, height: h / H };
   }
+}
+
+// Pagina girata di `angolo` gradi attorno al centro (raddrizzata da «Ruota», 30/10/2026: la sottolineatura finiva
+// spostata). Il riquadro del browser è quello allineato agli assi del pezzo girato: se ne ricava il pezzo vero.
+function toPageBoxGirata(layer, div, angolo, { x, y, w, h }) {
+  const a = (angolo * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.abs(Math.sin(a));
+  const pr = div.getBoundingClientRect();
+  const px = x + w / 2 - (pr.left + pr.width / 2);
+  const py = y + h / 2 - (pr.top + pr.height / 2);
+  // il centro del pezzo, ruotato all'indietro attorno al centro della pagina
+  const ux = px * Math.cos(-a) - py * Math.sin(-a);
+  const uy = px * Math.sin(-a) + py * Math.cos(-a);
+  const k = c * c - s * s;
+  const ww = Math.max(1, (w * c - h * s) / k);
+  const hh = Math.max(1, (h * c - w * s) / k);
+  const W = layer.offsetWidth;
+  const H = layer.offsetHeight;
+  // il livello del testo può non coincidere col bordo della pagina
+  const dx = layer.offsetLeft + div.clientLeft + W / 2 - div.offsetWidth / 2;
+  const dy = layer.offsetTop + div.clientTop + H / 2 - div.offsetHeight / 2;
+  return { x: (ux - dx + W / 2 - ww / 2) / W, y: (uy - dy + H / 2 - hh / 2) / H, width: ww / W, height: hh / H };
 }
 
 // I pezzi presi dal riquadro (coordinate PDF) nello stesso formato.

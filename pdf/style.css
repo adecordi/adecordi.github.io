@@ -746,7 +746,8 @@ body.outlook .welcome { place-items: start center; }
 .ocrLayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; font-family: sans-serif; }
 /* Selezione ben visibile, sul testo vero e su quello riconosciuto. */
 #viewer :is(.textLayer, .ocrLayer) ::selection { background: rgb(35 87 209 / 0.42); }
-.ocrLayer br::selection { background: transparent; }
+/* gli a-capo fra le righe lette stanno in colonna a sinistra: mai colorati (la regola #viewer qui sopra vincerebbe) */
+#viewer :is(.textLayer, .ocrLayer) br::selection { background: transparent; }
 .ocr-status {
   position: fixed;
   left: 12px;
