@@ -35,7 +35,11 @@ function remember(dataUrl) {
 export function chiediFirma() {
   if (!dialog) build();
   refreshSaved();
-  setMode(saved() ? "salvata" : "disegna");
+  clearPad();
+  dialog.querySelector(".sign-typed").value = "";
+  photo = null;
+  mode = saved() ? "salvata" : "disegna";
+  markSaved();
   dialog.showModal();
   return new Promise((resolve) => (resolveFn = resolve));
 }
@@ -47,39 +51,32 @@ function close(result) {
   if (r) r(result);
 }
 
+// Una schermata sola, senza schede (Alessandro, 30/10/2026): la firma salvata (se c'è), il riquadro
+// dove si firma col dito e, subito sotto, «scrivi il nome» e «da foto». Scrivere o scegliere una
+// foto la disegna nello stesso riquadro: si inserisce sempre quello che si vede lì.
 function build() {
-  const tabs = [
-    ["salvata", "Firma salvata"],
-    ["disegna", "Disegna"],
-    ["scrivi", "Scrivi"],
-    ["foto", "Da foto"],
-  ];
-  pad = h("canvas", { class: "sign-pad", width: 1200, height: 400, "aria-label": "Disegna qui la firma" });
-  const typed = h("input", { type: "text", class: "sign-typed", placeholder: "Nome e cognome", autocomplete: "name", "aria-label": "Testo della firma" });
+  pad = h("canvas", { class: "sign-pad", width: 1200, height: 400, "aria-label": "Firma qui" });
+  const typed = h("input", { type: "text", class: "sign-typed", placeholder: "…oppure scrivi nome e cognome", autocomplete: "name", "aria-label": "Scrivi la firma" });
   const file = h("input", { type: "file", accept: "image/*", hidden: true });
   const savedImg = h("img", { class: "sign-saved", alt: "Firma salvata" });
   const keep = h("input", { type: "checkbox", id: "signKeep" });
 
   dialog = h("dialog", { class: "modal sign-dialog", "aria-labelledby": "signTitle" },
     h("h2", { id: "signTitle" }, icon("sign"), " Aggiungi la firma"),
-    h("div", { class: "sign-tabs", role: "tablist" }, tabs.map(([k, label]) =>
-      h("button", { type: "button", role: "tab", class: "sign-tab", "data-mode": k, onclick: () => setMode(k) }, label))),
-    h("div", { class: "sign-area" },
-      h("div", { class: "sign-pane", "data-pane": "salvata" }, savedImg,
-        h("button", { type: "button", class: "btn subtle", onclick: () => { remember(null); refreshSaved(); setMode("disegna"); } }, "Dimentica questa firma")),
-      h("div", { class: "sign-pane", "data-pane": "disegna" }, pad,
-        h("button", { type: "button", class: "btn subtle", onclick: clearPad }, "Cancella")),
-      h("div", { class: "sign-pane", "data-pane": "scrivi" }, typed,
-        h("canvas", { class: "sign-preview", width: 1200, height: 300 })),
-      h("div", { class: "sign-pane", "data-pane": "foto" },
-        h("p", { class: "sign-hint" }, "Una foto della firma su un foglio bianco: lo sfondo viene tolto da solo."),
-        h("button", { type: "button", class: "btn", onclick: () => file.click() }, icon("open"), h("span", null, "Scegli la foto")),
-        h("canvas", { class: "sign-preview photo", width: 1200, height: 400 }))),
+    h("div", { class: "sign-saved-row" },
+      h("button", { type: "button", class: "sign-saved-pick", title: "Usa la firma salvata", onclick: () => { mode = "salvata"; clearPad(); markSaved(); } },
+        savedImg, h("span", null, "Usa la firma salvata")),
+      h("button", { type: "button", class: "btn subtle", onclick: () => { remember(null); refreshSaved(); mode = "disegna"; markSaved(); } }, "Dimentica")),
+    h("div", { class: "sign-pad-wrap" }, pad, h("span", { class: "sign-pad-hint" }, "Firma qui col dito, la penna o il mouse")),
+    h("div", { class: "sign-alt" },
+      typed,
+      h("button", { type: "button", class: "btn", onclick: () => file.click() }, icon("shot"), h("span", null, "Da foto")),
+      h("button", { type: "button", class: "btn subtle", onclick: () => { clearPad(); typed.value = ""; photo = null; mode = "disegna"; markSaved(); } }, "Cancella")),
     h("div", { class: "sign-options" },
       h("span", { class: "sign-colors" }, "Colore:",
         Object.entries(INK).map(([name, color]) => h("button", {
           type: "button", class: "sign-color", title: name, "aria-label": `Inchiostro ${name}`, style: `--ink:${color}`,
-          onclick: () => { ink = color; markInk(); redrawTyped(); redrawPhoto(); },
+          onclick: () => { ink = color; markInk(); if (mode === "scrivi") redrawTyped(); if (mode === "foto") redrawPhoto(); },
         }))),
       h("label", { class: "sign-keep" }, keep, " Ricorda la firma su questo dispositivo")),
     h("div", { class: "modal-actions" },
@@ -106,9 +103,18 @@ function build() {
       e.pressure && e.pointerType === "pen" ? e.pressure : 0.5];
   };
   pad.addEventListener("pointerdown", (e) => {
+    // Si comincia a firmare a mano: via il nome scritto o la foto che c'erano nel riquadro.
+    if (mode !== "disegna") {
+      clearPad();
+      typed.value = "";
+      photo = null;
+      mode = "disegna";
+      markSaved();
+    }
     pad.setPointerCapture(e.pointerId);
     last = point(e);
     strokes++;
+    markEmpty();
   });
   pad.addEventListener("pointermove", (e) => {
     if (!last) return;
@@ -127,7 +133,12 @@ function build() {
   pad.addEventListener("pointerup", stop);
   pad.addEventListener("pointercancel", stop);
 
-  typed.addEventListener("input", redrawTyped);
+  typed.addEventListener("input", () => {
+    mode = typed.value.trim() ? "scrivi" : "disegna";
+    photo = null;
+    markSaved();
+    redrawTyped();
+  });
   file.addEventListener("change", async () => {
     const f = file.files && file.files[0];
     file.value = "";
@@ -137,6 +148,10 @@ function build() {
     } catch {
       photo = null;
     }
+    if (!photo) return;
+    typed.value = "";
+    mode = "foto";
+    markSaved();
     redrawPhoto();
   });
   markInk();
@@ -144,15 +159,18 @@ function build() {
 
 function refreshSaved() {
   const s = saved();
-  dialog.querySelector('[data-mode="salvata"]').hidden = !s;
+  dialog.querySelector(".sign-saved-row").hidden = !s;
   if (s) dialog.querySelector(".sign-saved").src = s;
 }
 
-function setMode(k) {
-  mode = k;
-  for (const t of dialog.querySelectorAll(".sign-tab")) t.setAttribute("aria-selected", String(t.dataset.mode === k));
-  for (const p of dialog.querySelectorAll(".sign-pane")) p.hidden = p.dataset.pane !== k;
-  if (k === "scrivi") dialog.querySelector(".sign-typed").focus();
+// La firma salvata è «scelta» finché non si firma, si scrive o si sceglie una foto.
+function markSaved() {
+  dialog.querySelector(".sign-saved-pick").setAttribute("aria-pressed", String(mode === "salvata"));
+  markEmpty();
+}
+
+function markEmpty() {
+  dialog.querySelector(".sign-pad-wrap").classList.toggle("vuoto", mode === "salvata" || (mode === "disegna" && !strokes));
 }
 
 function markInk() {
@@ -162,29 +180,35 @@ function markInk() {
 function clearPad() {
   pad.getContext("2d").clearRect(0, 0, pad.width, pad.height);
   strokes = 0;
+  if (dialog) markEmpty();
 }
 
 function redrawTyped() {
-  const c = dialog.querySelector('[data-pane="scrivi"] canvas');
-  const ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, c.width, c.height);
+  const ctx = pad.getContext("2d");
+  ctx.clearRect(0, 0, pad.width, pad.height);
+  strokes = 0;
   const text = dialog.querySelector(".sign-typed").value.trim();
+  markEmpty();
   if (!text) return;
-  let size = 150;
+  let size = 170;
   do {
     ctx.font = `${size}px ${SCRIPT_FONTS}`;
     size -= 6;
-  } while (ctx.measureText(text).width > c.width - 40 && size > 30);
+  } while (ctx.measureText(text).width > pad.width - 60 && size > 30);
   ctx.fillStyle = ink;
   ctx.textBaseline = "middle";
-  ctx.fillText(text, 20, c.height / 2);
+  ctx.textAlign = "center";
+  ctx.fillText(text, pad.width / 2, pad.height / 2);
+  ctx.textAlign = "start";
 }
 
 // Foto: i pixel chiari diventano trasparenti, quelli scuri prendono il colore dell'inchiostro.
 function redrawPhoto() {
-  const c = dialog.querySelector('[data-pane="foto"] canvas');
+  const c = pad;
   const ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.clearRect(0, 0, c.width, c.height);
+  strokes = 0;
+  markEmpty();
   if (!photo) return;
   const k = Math.min(c.width / photo.width, c.height / photo.height);
   const w = Math.round(photo.width * k);
@@ -216,12 +240,11 @@ function redrawPhoto() {
   ctx.putImageData(img, 0, 0);
 }
 
-// La firma del pannello attivo, ritagliata attorno al tratto.
+// La firma del riquadro (o quella salvata), ritagliata attorno al tratto.
 async function currentSignature() {
   if (mode === "salvata") return saved();
-  const c = mode === "disegna" ? pad : dialog.querySelector(`[data-pane="${mode}"] canvas`);
   if (mode === "disegna" && !strokes) return null;
-  const cropped = crop(c);
+  const cropped = crop(pad);
   return cropped ? cropped.toDataURL("image/png") : null;
 }
 

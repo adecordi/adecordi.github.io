@@ -1117,3 +1117,23 @@ body.panel-open .sig-panel { box-shadow: none; animation: none; }
 .fill-who-opt input { flex: none; width: 17px; height: 17px; min-height: 0; margin: 2px 0 0; padding: 0; accent-color: #a4161a; }
 .fill-who-opt span { flex: 1; display: grid; gap: 1px; text-align: left; }
 .fill-who-opt small { color: var(--muted); font-size: 12.5px; }
+
+/* Firma in una schermata sola, senza schede (30/10/2026) */
+.sign-saved-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 10px; }
+.sign-saved-pick { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 6px 12px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.sign-saved-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--tb-hover, rgb(164 22 26 / 0.08)); }
+.sign-saved-pick img.sign-saved { height: 44px; max-width: 55%; object-fit: contain; background: #fff; border-radius: 6px; }
+.sign-pad-wrap { position: relative; }
+.sign-pad-hint { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); font-size: 14px; pointer-events: none; }
+.sign-pad-wrap.vuoto .sign-pad-hint { display: grid; }
+.sign-alt { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.sign-alt .sign-typed { flex: 1 1 220px; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 15px; }
+.sign-alt .btn { min-height: 40px; }
+.sign-pad-wrap canvas.sign-pad { display: block; width: 100%; aspect-ratio: 3 / 1; border: 1px dashed var(--border); border-radius: 8px; background: #fff; }
+.sign-saved-pick img.sign-saved { width: auto; aspect-ratio: auto; border: 0; }
+@media (max-width: 500px) {
+  .sign-dialog h2 { margin-bottom: 6px; }
+  .sign-alt .sign-typed { flex-basis: 100%; }
+}

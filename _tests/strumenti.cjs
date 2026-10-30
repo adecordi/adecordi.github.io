@@ -100,7 +100,8 @@ const FAKE = "https://compilatore.prova";
   check("firma ricordata sul dispositivo", await page.evaluate(() => !!localStorage.getItem("lettore-firma")));
   await page.click("#btnSign");
   await page.waitForSelector(".sign-dialog[open]");
-  check("firma salvata proposta per prima", (await page.getAttribute('.sign-tab[data-mode="salvata"]', "aria-selected")) === "true");
+  check("firma salvata proposta per prima", (await page.getAttribute(".sign-saved-pick", "aria-pressed")) === "true"
+    && await page.isVisible(".sign-dialog .sign-pad") && await page.isVisible(".sign-dialog .sign-typed"));
   await page.keyboard.press("Escape");
   check("Esc chiude la finestra della firma", !(await page.$(".sign-dialog[open]")));
 
