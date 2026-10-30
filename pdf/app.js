@@ -235,9 +235,11 @@ async function showHome() {
   idle();
   await closeDocument();
   updateControls();
+  mostraBozza();
 }
 
 async function closeDocument() {
+  compilatore.dimenticaVerifiche();
   const old = doc;
   doc = null;
   if (printJob) printJob.cancelled = true;
@@ -740,11 +742,84 @@ async function documentBytes(d = doc) {
 
 async function downloadDocument() {
   if (!doc) return;
+  // dati delicati compilati dall'AI ancora da verificare: si chiede prima (suggerimento delle altre AI, 30/10/2026)
+  const n = compilatore.daVerificare();
+  if (n && !confirm(`${n === 1 ? "C'è ancora 1 dato" : `Ci sono ancora ${n} dati`} da verificare (IBAN, codici, dichiarazioni) nel pannello a destra.
+
+Salvo lo stesso?`)) return;
   const current = doc;
   const data = await documentBytes(current);
   saveBytes(data, current.name, current.type.mime);
   current.modificato = false;
+  dimenticaBozza();
 }
+
+/* ------------------------------------------- Bozza salvata da sola */
+
+// Ogni 30 secondi, se il documento è cambiato, una copia nel browser (IndexedDB, solo su questo dispositivo): se il
+// browser si chiude o va in crash il lavoro non si perde (suggerimento delle altre AI, 30/10/2026). Una bozza sola;
+// si cancella salvando il PDF o uscendo senza salvare.
+const bozzaDb = () => new Promise((resolve, reject) => {
+  const r = indexedDB.open("carta-bozza", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("bozze");
+  r.onsuccess = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+});
+async function bozza(modo, valore) {
+  try {
+    const db = await bozzaDb();
+    return await new Promise((resolve, reject) => {
+      const t = db.transaction("bozze", modo === "leggi" ? "readonly" : "readwrite").objectStore("bozze");
+      const r = modo === "leggi" ? t.get("ultima") : modo === "scrivi" ? t.put(valore, "ultima") : t.delete("ultima");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  } catch {
+    return null; // senza IndexedDB (navigazione privata) niente bozza
+  }
+}
+let impronta = "";
+setInterval(async () => {
+  const d = doc;
+  if (!d || !d.modificato || !d.pdf) return;
+  try {
+    const h = d.pdf.annotationStorage.serializable.hash || String(d.pdf.annotationStorage.size);
+    if (h === impronta) return;
+    const bytes = await documentBytes(d);
+    if (doc !== d || bytes.length > 40e6) return;
+    impronta = h;
+    await bozza("scrivi", { nome: d.name, bytes, quando: Date.now() });
+  } catch (e) {
+    console.warn("bozza:", e);
+  }
+}, 30000);
+const dimenticaBozza = () => {
+  impronta = "";
+  return bozza("cancella");
+};
+
+async function mostraBozza() {
+  const b = await bozza("leggi");
+  const box = $("bozzaBox");
+  if (!b || !box || doc) return;
+  const ora = new Date(b.quando).toLocaleString("it-IT", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  box.replaceChildren(
+    h("p", null, h("strong", null, "Hai una bozza non salvata: "), `«${b.nome}» (${ora}).`),
+    h("div", { class: "modal-actions" },
+      h("button", { class: "btn primary", type: "button", onclick: async () => {
+        box.hidden = true;
+        await openBytes(b.bytes, b.nome);
+        if (doc) doc.modificato = true;
+      } }, "Riprendi"),
+      h("button", { class: "btn", type: "button", onclick: async () => {
+        await dimenticaBozza();
+        box.hidden = true;
+      } }, "Elimina")));
+  box.hidden = false;
+}
+mostraBozza();
+// Sul telefono l'elenco «Cosa puoi fare» parte chiuso: gli esempi salgono sotto «Scegli un file» (30/10/2026)
+if (matchMedia("(max-width: 600px)").matches) $("cosaFai").open = false;
 
 /* ------------------------------------- Uscire con modifiche non salvate */
 
@@ -778,6 +853,7 @@ async function lasciaDocumento() {
   }
   if (scelta === "esci") {
     doc.modificato = false;
+    dimenticaBozza();
     return true;
   }
   return false;

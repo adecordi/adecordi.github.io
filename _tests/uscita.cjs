@@ -51,6 +51,17 @@ const { FX, BASE, check, watchErrors } = require("./common.cjs");
   await page.waitForFunction(() => /scansione/.test(document.getElementById("docTitle").textContent), null, { timeout: 10000 });
   check("«Esci senza salvare» apre l'altro", true);
 
+  // Bozza salvata da sola: firma, attesa del salvataggio automatico, «crash» (ricarica) e ripresa
+  await firma();
+  await page.waitForTimeout(33000);
+  page.removeAllListeners("dialog");
+  page.on("dialog", (d) => d.accept());
+  await page.reload();
+  await page.waitForSelector("#bozzaBox:not([hidden])", { timeout: 10000 });
+  check("dopo un crash la pagina iniziale offre la bozza", (await page.textContent("#bozzaBox")).includes("scansione.pdf"));
+  await page.click("#bozzaBox .btn.primary");
+  await page.waitForSelector(".page[data-page-number='1'] canvas", { timeout: 15000 });
+  check("«Riprendi» riapre il documento con la firma", /scansione/.test(await titolo()) && (await page.$$(".stampEditor, .annotationLayer .stampAnnotation, section.stampAnnotation")).length > 0);
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();
 })().catch((e) => {

@@ -496,6 +496,7 @@ export function renderReport(panel, body, report, azioni = {}) {
             h("span", { class: "fill-value" }, r.valore),
             h("small", null, `Fonte: ${r.fonte || "?"} · certezza ${r.certezza || "?"}`),
             r.nota ? h("small", null, r.nota) : null,
+            r.brano ? h("blockquote", { class: "fill-brano" }, `«${r.brano}»`) : null,
             h("button", { class: "btn primary", type: "button", onclick: () => metti(m, r.valore, stato) }, "Inserisci"));
         } catch (err) {
           stato.replaceChildren(h("span", null, err.message || String(err)));
@@ -504,10 +505,33 @@ export function renderReport(panel, body, report, azioni = {}) {
       } }, "Cercalo"));
     return h("li", null, h("strong", null, m.campo), m.motivo ? h("span", null, m.motivo) : null, bottoni, scrivi, stato);
   };
+  // I dati delicati compilati dall'AI si spuntano come verificati: salvando prima, C.A.R.T.A. chiede conferma
+  // (suggerimento delle altre AI, 30/10/2026). Stato per il modulo aperto, letto da app.js con daVerificare().
+  const delicati = compilati.filter(eDelicato);
+  daVerificareOra = new Set(delicati.map((c) => c.pdf_campo || c.campo));
+  const titolo = panel.querySelector("h2");
+  if (titolo) titolo.textContent = "Compilazione da verificare";
+  const voceCompilata = (c) => {
+    const chiave = c.pdf_campo || c.campo;
+    const verifica = eDelicato(c) ? h("button", { class: "btn fill-verifica", type: "button", onclick: (e) => {
+      e.stopPropagation();
+      daVerificareOra.delete(chiave);
+      e.currentTarget.replaceWith(h("span", { class: "fill-ok" }, "✓ verificato"));
+      aggiornaConteggi();
+    } }, "Verificato") : null;
+    return h("li", { class: c.pdf_campo ? "fill-vai" : null, title: c.pdf_campo ? "Mostra nel modulo" : null,
+      onclick: () => c.pdf_campo && azioni.mostra && azioni.mostra(c.pdf_campo) },
+      h("strong", null, c.campo), h("span", { class: "fill-valore" }, String(c.valore)),
+      h("em", { class: "fill-fonte" }, FONTI[c.fonte] || "dedotto dall'AI"), verifica);
+  };
+  const conteggi = h("p", { class: "fill-summary" });
+  const aggiornaConteggi = () => conteggi.replaceChildren(
+    `${compilati.length} compilati · ${mancanti.length} da completare · ${daVerificareOra.size} da verificare`,
+    report.metodo === "posizioni" ? h("small", null, " (modulo senza campi: ho aggiunto i campi sopra la pagina)") : null);
+  aggiornaConteggi();
   body.replaceChildren(
-    h("p", { class: "fill-summary" },
-      compilati.length ? `${compilati.length} ${compilati.length === 1 ? "campo compilato" : "campi compilati"}` : "Nessun campo compilato",
-      report.metodo === "posizioni" ? " (modulo senza campi: ho aggiunto i campi sopra la pagina)." : "."),
+    conteggi,
+    report.dalla_memoria ? h("p", { class: "fill-hint" }, "⚡ Compilato subito dalla memoria: questo modulo, con questi dati, era già stato compilato negli ultimi 30 giorni.") : null,
     // dati delicati della Vinicola cambiati nella cassaforte aziendale (vedi sorveglianza.py del compilatore)
     (report.avvisi || []).length ? h("div", { class: "fill-avviso", role: "alert" },
       h("strong", null, "⚠️ Attenzione"), ...report.avvisi.map((a) => h("p", null, a))) : null,
@@ -515,11 +539,25 @@ export function renderReport(panel, body, report, azioni = {}) {
     mancanti.length ? h("section", null, h("h3", null, "Da completare"),
       h("p", { class: "fill-hint" }, "Scrivilo tu o lo cerco io nei Files Comuni, su OneDrive e nella posta: con «Inserisci» va subito nel modulo."),
       h("ul", { class: "fill-list todo" }, mancanti.map(voce)), salva) : null,
-    compilati.length ? h("section", null, h("h3", null, "Compilati"),
-      h("ul", { class: "fill-list" }, compilati.map((c) =>
-        h("li", null, h("strong", null, c.campo), h("span", null, String(c.valore)),
-          c.pagina ? h("em", null, `pag. ${c.pagina}`) : null)))) : null);
+    delicati.length ? h("section", null, h("h3", null, "Da verificare"),
+      h("p", { class: "fill-hint" }, "Dati che contano (IBAN, codici, PEC, dichiarazioni): controllali sul modulo e spunta «Verificato»."),
+      h("ul", { class: "fill-list" }, delicati.map(voceCompilata))) : null,
+    compilati.length > delicati.length ? h("section", null, h("h3", null, "Compilati"),
+      h("p", { class: "fill-hint" }, "Clicca un dato per vederlo nel modulo."),
+      h("ul", { class: "fill-list" }, compilati.filter((c) => !eDelicato(c)).map(voceCompilata))) : null);
   panel.hidden = false;
+}
+
+// Da dove viene ogni dato compilato (lo dice il compilatore)
+const FONTI = { azienda: "dalla cassaforte: Vinicola", persona: "dalla cassaforte: i tuoi dati", istruzioni: "dalle tue istruzioni", oggi: "data e luogo di oggi" };
+const eDelicato = (c) => /iban|partita iva|p\.\s?iva|codice fiscale|pec|sdi|codice destinatario|dichiar|consapevole|liquidazione|durc|regola/i.test(c.campo)
+  || c.valore === "spuntata";
+let daVerificareOra = new Set();
+
+/** Quanti dati delicati del modulo compilato aperto non sono ancora stati spuntati come verificati. */
+export const daVerificare = () => daVerificareOra.size;
+export function dimenticaVerifiche() {
+  daVerificareOra = new Set();
 }
 
 /* ------------------------------- Cassaforte aziendale e «I miei dati» */

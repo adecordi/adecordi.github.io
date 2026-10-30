@@ -137,7 +137,7 @@
       </button>
       </div>
       <div class="tb-cluster" role="group" aria-label="Firma">
-        <button class="btn icon-only-mobile" id="btnSign" type="button" title="Aggiungi la firma" disabled>
+        <button class="btn icon-only-mobile" id="btnSign" type="button" title="Aggiungi la firma grafica (disegnata o scritta: non è una firma digitale)" disabled>
         <svg class="icon"><use href="#i-sign"/></svg><span class="btn-label">Firma</span>
       </button>
       </div>
@@ -179,12 +179,16 @@
           <svg class="icon"><use href="#i-open"/></svg><span>Scegli un file</span>
         </button>
         <p class="formats">PDF, anche protetti da password · P7M firmati digitalmente (CAdES) · TSD e M7M con marca temporale</p>
+        <details class="cosa-fai" id="cosaFai" open>
+          <summary>Cosa puoi fare</summary>
         <ul class="features">
           <li><svg class="icon"><use href="#i-lock"/></svg><span><strong>Privato.</strong> Il file si legge sul tuo dispositivo e non va su nessun server. Solo le funzioni con l'AI (Compila, Riassumi, Spiega, OCR sul server) mandano il testo, e solo quando le chiedi.</span></li>
           <li><svg class="icon"><use href="#i-shield-ok"/></svg><span><strong>Firma digitale.</strong> Chi ha firmato e se il documento è integro; stampa o salva il PDF contenuto nel p7m.</span></li>
           <li><svg class="icon"><use href="#i-sign"/></svg><span><strong>Annota e firma.</strong> Sottolinea, aggiungi note e la tua firma: restano nel PDF salvato.</span></li>
           <li><svg class="icon"><use href="#i-sum"/></svg><span><strong>Compila e capisci.</strong> Riempie i moduli con i tuoi dati, legge le scansioni (OCR), riassume e spiega con l'AI.</span></li>
         </ul>
+        </details>
+        <div class="bozza-box" id="bozzaBox" hidden></div>
         <div class="esempi">
           <p class="esempi-titolo">Prova con un esempio</p>
           <div class="esempi-lista">

@@ -160,7 +160,8 @@ const FAKE = "https://compilatore.prova";
         pdf: fs.readFileSync(MODULO).toString("base64"),
         metodo: "campi",
         avvisi: ["IBAN cambiato nella cassaforte aziendale (visto il 30/10/2026): prima IT60…3456 → ora IT60…9999."],
-        compilati: [{ campo: "Cognome", valore: "ROSSI", pagina: 1 }],
+        compilati: [{ campo: "Cognome", valore: "ROSSI", pagina: 1 },
+          { campo: "IBAN", valore: "IT00X0000000000000000000000", pagina: 1, pdf_campo: "p1_c09_IBAN", fonte: "azienda" }],
         mancanti: [{ campo: "Firma", motivo: "da fare a mano" }, { campo: "Numero REA", motivo: "non nelle fonti" },
           { campo: "Banca", motivo: "non nelle fonti", pdf_campo: "p1_c06_Banca", tipo: "testo" },
           { campo: "Delegato 1", motivo: "non nelle fonti", pdf_campo: "p1_c16_Cognome e nome (riga 1)", tipo: "testo" },
@@ -220,6 +221,17 @@ const FAKE = "https://compilatore.prova";
   await page.waitForTimeout(500);
   check("ricompilato col dato trovato", richieste.length === 2 && richieste[1].istruzioni.includes("Numero REA: CR-28313")
     && richieste[1].profilo === "azienda", richieste.length ? JSON.stringify(richieste[richieste.length - 1].istruzioni) : "");
+  // Dati delicati: «Da verificare», con la provenienza; salvando prima di verificarli si chiede conferma
+  const pannello = await page.textContent("#fillPanel");
+  check("titolo e conteggi del pannello", pannello.includes("Compilazione da verificare") && /da verificare/.test(pannello));
+  check("IBAN da verificare, con la provenienza", (await page.textContent("#fillBody")).includes("dalla cassaforte: Vinicola"));
+  let chiesto = "";
+  page.once("dialog", (d) => { chiesto = d.message(); d.dismiss(); });
+  await page.click("#btnDownload");
+  await page.waitForTimeout(300);
+  check("salvando con dati non verificati chiede conferma", /da verificare/.test(chiesto), chiesto.slice(0, 60));
+  await page.click("#fillBody button.fill-verifica");
+  check("«Verificato» toglie la richiesta", (await page.textContent("#fillBody")).includes("✓ verificato"));
   const report = await page.textContent("#fillBody");
   check("riepilogo: compilati e da fare", report.includes("ROSSI") && report.includes("Da completare") && report.includes("Firma"));
   await page.screenshot({ path: SHOTS + "42-compilato.png" });
