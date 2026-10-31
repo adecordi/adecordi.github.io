@@ -179,49 +179,119 @@ function bindPages() {
   });
   // «Raddrizza»: compare da solo quando la scansione aperta è storta (Alessandro, 30/10/2026).
   els.btnRaddrizza.addEventListener("click", async () => {
-    nascondiAvviso();
+    const resto = proposteOra.filter((p) => p.azione !== "raddrizza");
+    if (resto.length && avviso && !avviso.hidden) mostraProposte(resto);
+    else nascondiAvviso();
     if (await raddrizza()) els.btnRaddrizza.hidden = true;
   });
   eventBus.on("pagesinit", () => {
     els.btnRaddrizza.hidden = true;
     nascondiAvviso();
-    controllaStorta(pdfViewer.pdfDocument);
+    analizzaDocumento(pdfViewer.pdfDocument);
   });
 }
 
-// Aperta una scansione: si misura la prima pagina e, se è storta, compare «Raddrizza» (lo si nota anche con un
-// avviso). Un documento già raddrizzato (il modulo compilato da uno raddrizzato) non lo mostra.
-async function controllaStorta(doc) {
+// Aperto un file, si guarda cosa gli serve e lo si propone in una barra sopra la pagina, con i pulsanti pronti
+// (Alessandro, 31/10/2026: «controlla se c'è bisogno di raddrizzarlo o riassumerlo o compilarlo»):
+//  - Raddrizza: scansione storta (la prima pagina, misurata come fa «Raddrizza»);
+//  - Compila: un modulo (campi vuoti, righe ____, quadratini, parole tipiche dei moduli); per le scansioni si
+//    aspetta il testo letto dall'OCR;
+//  - Riassumi: un documento lungo che non è un modulo.
+// Niente proposte su un modulo già compilato da C.A.R.T.A. né se il compilatore non è collegato (Compila, Riassumi).
+const PAROLE_MODULO = /il sottoscritt|ragione sociale|codice fiscale|partita iva|p\.\s?iva|nat[oa] a|residente|sede legale|dichiar|compilare|barrare|timbro e firma|firma del|luogo e data|iban|pec\b|n\. rea|legale rappresentante|in qualità di/gi;
+
+// Il modulo appena compilato si apre senza proposte (avrebbe ancora campi vuoti: riproporrebbe «Compila»).
+let saltaProposte = false;
+export function nienteProposte() {
+  saltaProposte = true;
+}
+
+async function analizzaDocumento(doc) {
+  if (saltaProposte) {
+    saltaProposte = false;
+    return;
+  }
   try {
     await new Promise((r) => setTimeout(r, 300)); // la prima pagina deve avere il suo pdfPage
     const v = pdfViewer.getPageView(0);
-    if (!doc || pdfViewer.pdfDocument !== doc || raddrizzate.has(doc) || !v || !v.pdfPage) return;
-    if ((await testo.quotaImmagini(v)) < 0.5) return;
-    const a = await testo.angoloStorto(v);
-    if (pdfViewer.pdfDocument !== doc || raddrizzate.has(doc) || Math.abs(a) < 0.15) return;
-    const gradi = Math.abs(a).toLocaleString("it-IT", { maximumFractionDigits: 1 });
-    els.btnRaddrizza.title = `Raddrizza la scansione (è storta di ${gradi}°)`;
-    els.btnRaddrizza.hidden = false;
-    avvisoStorta(`La scansione è storta di ${gradi}°.`);
+    if (!doc || pdfViewer.pdfDocument !== doc || !v || !v.pdfPage) return;
+    const proposte = []; // [{ azione, testo }]
+    const ancora = () => pdfViewer.pdfDocument === doc;
+    // 1. storta?
+    const scansione = (await testo.quotaImmagini(v)) >= 0.5;
+    if (scansione && !raddrizzate.has(doc)) {
+      const a = await testo.angoloStorto(v);
+      if (!ancora()) return;
+      if (Math.abs(a) >= 0.15) {
+        const gradi = Math.abs(a).toLocaleString("it-IT", { maximumFractionDigits: 1 });
+        els.btnRaddrizza.title = `Raddrizza la scansione (è storta di ${gradi}°)`;
+        els.btnRaddrizza.hidden = false;
+        proposte.push({ azione: "raddrizza", testo: `La scansione è storta di ${gradi}°.` });
+        mostraProposte(proposte); // subito: il resto può aspettare l'OCR
+      }
+    }
+    // 2. modulo o documento lungo?
+    const pagine = Math.min(doc.numPages, 3);
+    let campiVuoti = 0;
+    let giaCompilato = false;
+    let testoPagine = "";
+    for (let n = 1; n <= pagine; n++) {
+      const pg = await doc.getPage(n);
+      for (const a of await pg.getAnnotations()) {
+        if (a.subtype !== "Widget" || a.fieldType === "Sig") continue;
+        if (String(a.fieldName || "").startsWith("carta_")) giaCompilato = true;
+        if (a.fieldType === "Tx" && !a.fieldValue) campiVuoti++;
+      }
+      testoPagine += (await pg.getTextContent()).items.map((t) => t.str).join(" ") + "\n";
+    }
+    if (scansione && testoPagine.trim().length < 50) {
+      // scansione: si aspetta il testo dell'OCR della prima pagina (al massimo un minuto)
+      for (let i = 0; i < 120 && ancora() && !testo.ocrText(1); i++) await new Promise((r) => setTimeout(r, 500));
+      testoPagine = testo.ocrText(1);
+    }
+    if (!ancora()) return;
+    const parole = new Set((testoPagine.match(PAROLE_MODULO) || []).map((w) => w.toLowerCase())).size;
+    const righeVuote = (testoPagine.match(/_{4,}|\.{6,}/g) || []).length;
+    const modulo = !giaCompilato && (campiVuoti >= 3 || parole >= 3 || (parole >= 2 && righeVuote >= 3) || (scansione && parole >= 2));
+    const lungo = !modulo && (doc.numPages >= 3 || testoPagine.length >= 4000);
+    if (modulo && !els.btnFill.hidden) {
+      proposte.push({ azione: "compila", testo: "Sembra un modulo da compilare." });
+    } else if (lungo && !els.btnSum.hidden) {
+      proposte.push({ azione: "riassumi", testo: `È un documento di ${doc.numPages} ${doc.numPages === 1 ? "pagina" : "pagine"}: posso riassumerlo.` });
+    }
+    if (proposte.length) mostraProposte(proposte);
   } catch (e) {
-    console.warn("controllo inclinazione:", e);
+    console.warn("analisi del documento:", e);
   }
 }
 
-// L'avviso sopra la pagina, con l'azione lì accanto (prima era un messaggio in basso che rimandava al tasto in alto).
+// La barra delle proposte sopra la pagina, con le azioni lì accanto.
 let avviso = null;
-function avvisoStorta(testo) {
+const AZIONI = {
+  raddrizza: ["Raddrizza", async () => {
+    if (await raddrizza()) els.btnRaddrizza.hidden = true;
+  }],
+  compila: ["Compila", () => els.btnFill.click()],
+  riassumi: ["Riassumi", () => els.btnSum.click()],
+};
+let proposteOra = [];
+function mostraProposte(proposte) {
+  proposteOra = proposte;
   if (!avviso) {
-    avviso = ui.h("div", { class: "avviso-storta", role: "status" },
-      ui.h("span", { class: "avviso-testo" }),
-      ui.h("button", { class: "btn primary", type: "button", onclick: async () => {
-        nascondiAvviso();
-        if (await raddrizza()) els.btnRaddrizza.hidden = true;
-      } }, "Raddrizza"),
-      ui.h("button", { class: "btn", type: "button", onclick: () => nascondiAvviso() }, "Lascia così"));
+    avviso = ui.h("div", { class: "avviso-storta", role: "status" });
     els.viewerContainer.parentElement.append(avviso);
   }
-  avviso.querySelector(".avviso-testo").textContent = testo;
+  avviso.replaceChildren(
+    ui.h("span", { class: "avviso-testo" }, proposte.map((p) => p.testo).join(" ")),
+    ...proposte.map((p, i) => ui.h("button", { class: "btn" + (i === 0 ? " primary" : ""), type: "button", "data-azione": p.azione,
+      onclick: async () => {
+        // fatta un'azione restano le altre (raddrizzata la scansione, resta «Compila»)
+        const resto = proposte.filter((x) => x !== p);
+        if (resto.length) mostraProposte(resto);
+        else nascondiAvviso();
+        await AZIONI[p.azione][1]();
+      } }, AZIONI[p.azione][0])),
+    ui.h("button", { class: "btn", type: "button", onclick: () => nascondiAvviso() }, "Lascia così"));
   avviso.hidden = false;
 }
 function nascondiAvviso() {

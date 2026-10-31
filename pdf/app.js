@@ -947,6 +947,7 @@ let prossimiAngoli = null;
 
 async function mostraCompilato(result) {
   prossimiAngoli = V ? V.angoliRaddrizzati() : null;
+  if (V) V.nienteProposte();
   await openBytes(result.bytes, result.name, null, { sostituisci: true });
   if (doc) doc.modificato = true;
   els.sigPanel.hidden = true;

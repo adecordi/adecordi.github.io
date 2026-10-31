@@ -87,6 +87,7 @@ async function pendenza(page, png) {
     clip: { x: box2.x + 20, y: box2.y + 20, width: Math.min(box2.width, 700) - 40, height: Math.min(box2.height, 900) - 40 } }));
   check("il modulo compilato si apre già dritto", Math.abs(compilato) <= 0.15, `${compilato}°`);
   check("sul compilato già raddrizzato «Raddrizza» non compare", await page.isHidden("#btnRaddrizza"));
+  check("e sul modulo appena compilato nessuna proposta", !(await page.isVisible(".avviso-storta")));
   check("nessun errore nella pagina", errors.length === 0, errors.join(" | "));
   await b.close();
 })();

@@ -1251,3 +1251,6 @@ body.outlook .esempi { display: none; }
   .buttonWidgetAnnotation:is(.checkBox, .radioButton) input) { background-color: rgb(35 87 209 / 0.06); }
 #viewer .annotationLayer :is(.textWidgetAnnotation :is(input, textarea), .choiceWidgetAnnotation select):focus {
   background-color: rgb(35 87 209 / 0.1); border-color: #2357d1; }
+
+/* Mentre si firma o si scrive una nota, le proposte (Raddrizza/Compila/Riassumi) si tolgono: coprirebbero «Fatto» */
+main:has(.sign-bar:not([hidden])) .avviso-storta { display: none; }
