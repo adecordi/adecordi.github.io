@@ -704,8 +704,22 @@ async function esportaSchede() {
  * con «Usa quelli della VM»). Se manca la sua voce, chiede prima i suoi dati; Alessandro (proprietario) la prima volta
  * copia anche quelli della Vinicola dalla VM.
  */
+// Quale cassaforte usare per i dati dei moduli («Impostazioni», 31/10/2026): "aziendale" (cassaforte.it.fo) o "vm"
+// (le schede del server, solo Alessandro). Senza argomento la legge, con l'argomento la salva.
+const SCELTA_CF = "lettore-cassaforte-scelta";
+export function sceltaCassaforte(nuova) {
+  try {
+    if (nuova) localStorage.setItem(SCELTA_CF, nuova);
+    return localStorage.getItem(SCELTA_CF) || "aziendale";
+  } catch {
+    return nuova || "aziendale";
+  }
+}
+
 async function preparaSchede(ui) {
   const cfg = config();
+  // scelta «cassaforte del server» nelle impostazioni (non per i colleghi): niente cassaforte aziendale
+  if (!cfg.collega && sceltaCassaforte() === "vm") return null;
   const entrato = await accediCassaforte(!cfg.collega);
   if (entrato === "salta") return null;
   if (!entrato) throw new Error("annullato");

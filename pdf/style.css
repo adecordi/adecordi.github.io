@@ -1259,3 +1259,15 @@ main:has(.sign-bar:not([hidden])) .avviso-storta { display: none; }
 .tempo-lettura { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .tempo-lettura[hidden] { display: none; }
 @media (max-width: 600px) { .tempo-lettura { display: none; } }
+
+/* Impostazioni */
+.imp-dialog { width: min(560px, calc(100vw - 32px)); }
+.imp-sezione { margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--border); }
+.imp-sezione h3 { margin: 0 0 8px; font-size: 15px; }
+.imp-stato { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0 0; font-size: 14px; }
+.imp-stato .btn { min-height: 30px; margin-left: auto; }
+.imp-azioni { margin-top: 8px; }
+.imp-off { opacity: 0.5; }
+.imp-avv summary { cursor: pointer; padding: 4px 0; font-size: 14px; font-weight: 600; }
+.imp-avv p { margin: 2px 0 8px; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.imp-versione { margin: 12px 0 0; font-size: 12px; color: var(--muted); text-align: right; }

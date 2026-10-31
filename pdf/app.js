@@ -1167,6 +1167,7 @@ els.btnSign.addEventListener("click", addSignature);
 els.signDone.addEventListener("click", endSignature);
 els.btnFill.addEventListener("click", fillForm);
 els.btnSum.addEventListener("click", summarize);
+$("btnImpostazioni").addEventListener("click", async () => (await import("./impostazioni.js")).apri());
 els.btnTraduci.addEventListener("click", traduciDocumento);
 els.btnPunti.addEventListener("click", sottolineaPunti);
 els.sumClose.addEventListener("click", () => (els.sumPanel.hidden = true));
