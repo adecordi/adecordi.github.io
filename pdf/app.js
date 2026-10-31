@@ -42,6 +42,9 @@ const els = {
   btnSign: $("btnSign"),
   btnFill: $("btnFill"),
   btnSum: $("btnSum"),
+  btnTraduci: $("btnTraduci"),
+  btnPunti: $("btnPunti"),
+  tempoLettura: $("tempoLettura"),
   sumPanel: $("sumPanel"),
   sumBody: $("sumBody"),
   sumClose: $("sumClose"),
@@ -985,6 +988,56 @@ async function summarize() {
   }
 }
 
+// Il testo del documento aperto, una voce per pagina (anche quello letto con l'OCR).
+async function testoPagine(current) {
+  if (current.pdf) return V.documentText(current.pdf);
+  if (current.type.kind === "xml" || current.type.kind === "text") return [decodeText(current.data, current.type.kind)];
+  throw new Error("Questo tipo di file non contiene testo da leggere.");
+}
+
+// «Traduci»: tutto il documento, nel pannello accanto (31/10/2026)
+async function traduciDocumento() {
+  if (!doc) return;
+  const current = doc;
+  try {
+    const md = await compilatore.riassumi(current.name, await testoPagine(current), { busy, idle, toast }, "traduci");
+    if (doc !== current) return;
+    els.sigPanel.hidden = true;
+    els.fillPanel.hidden = true;
+    compilatore.renderSummary(els.sumPanel, els.sumBody, md, current.name, "traduci");
+  } catch (e) {
+    toast(e.message || String(e), "error");
+  }
+}
+
+// «Sottolinea i punti importanti»: l'AI sceglie le frasi, qui si ritrovano sulla pagina e si sottolineano (31/10/2026)
+async function sottolineaPunti() {
+  if (!doc || !doc.pdf) return;
+  const current = doc;
+  try {
+    const punti = await compilatore.riassumi(current.name, await testoPagine(current), { busy, idle, toast }, "punti");
+    if (doc !== current) return;
+    const perPagina = new Map();
+    for (const p of punti) {
+      const view = V.pageView(p.pagina - 1);
+      const boxes = view && view.pdfPage ? await V.trovaFrase(view, p.frase) : null;
+      p.trovato = !!boxes;
+      if (!boxes) continue;
+      if (!perPagina.has(view)) perPagina.set(view, { view, boxes: [], text: "" });
+      const g = perPagina.get(view);
+      g.boxes.push(...boxes);
+      g.text += p.frase + "\n";
+    }
+    if (perPagina.size) await V.sottolinea({ pages: [...perPagina.values()] });
+    els.sigPanel.hidden = true;
+    els.fillPanel.hidden = true;
+    compilatore.renderPunti(els.sumPanel, els.sumBody, punti, current.name, (n) => V.vaiPagina(n));
+    toast(`Sottolineati ${punti.filter((p) => p.trovato).length} punti su ${punti.length}.`);
+  } catch (e) {
+    toast(e.message || String(e), "error");
+  }
+}
+
 /* --------------------------------------------------------- Condivisione */
 
 const ENVELOPE_MIME = { p7m: "application/pkcs7-mime", p7s: "application/pkcs7-signature", tsd: "application/timestamped-data" };
@@ -1084,6 +1137,9 @@ function updateControls() {
   els.btnSign.disabled = !isPdf;
   els.btnFill.hidden = !(isPdf && compilatore.config());
   els.btnSum.hidden = !(hasDoc && compilatore.config() && (isPdf || ["xml", "text"].includes(doc.type.kind)));
+  els.btnTraduci.hidden = els.btnSum.hidden;
+  els.btnPunti.hidden = !(isPdf && compilatore.config());
+  if (!hasDoc) els.tempoLettura.hidden = true;
   els.btnShare.title = hasDoc ? "Condividi il documento" : "Condividi il lettore";
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
 }
@@ -1111,6 +1167,8 @@ els.btnSign.addEventListener("click", addSignature);
 els.signDone.addEventListener("click", endSignature);
 els.btnFill.addEventListener("click", fillForm);
 els.btnSum.addEventListener("click", summarize);
+els.btnTraduci.addEventListener("click", traduciDocumento);
+els.btnPunti.addEventListener("click", sottolineaPunti);
 els.sumClose.addEventListener("click", () => (els.sumPanel.hidden = true));
 els.fillClose.addEventListener("click", () => (els.fillPanel.hidden = true));
 // Due modi di selezionare: testo (riga per riga, quello normale) o riquadro.

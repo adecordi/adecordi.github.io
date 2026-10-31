@@ -1254,3 +1254,8 @@ body.outlook .esempi { display: none; }
 
 /* Mentre si firma o si scrive una nota, le proposte (Raddrizza/Compila/Riassumi) si tolgono: coprirebbero «Fatto» */
 main:has(.sign-bar:not([hidden])) .avviso-storta { display: none; }
+
+/* Tempo di lettura accanto al nome del file */
+.tempo-lettura { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.tempo-lettura[hidden] { display: none; }
+@media (max-width: 600px) { .tempo-lettura { display: none; } }

@@ -46,6 +46,13 @@ const FAKE = "https://compilatore.prova";
   check("documento di 3 pagine: propone «Riassumi»", (await azioni(page)) === "riassumi", await azioni(page));
   await page.close();
 
+  // modulo in inglese: anche «Traduci»
+  ({ page, errors } = await nuova(true));
+  await page.setInputFiles("#fileInput", path.join(ESEMPI, "long-term-supplier-declaration.pdf"));
+  await page.waitForSelector(".avviso-storta:not([hidden])", { timeout: 20000 });
+  check("documento in inglese: propone «Traduci»", (await azioni(page)).includes("traduci") && /inglese/.test(await page.textContent(".avviso-storta")), await azioni(page));
+  await page.close();
+
   // senza compilatore collegato niente «Compila»
   ({ page, errors } = await nuova(false));
   await page.setInputFiles("#fileInput", path.join(ESEMPI, "conto-corrente-dedicato.pdf"));

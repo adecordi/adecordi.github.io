@@ -186,6 +186,7 @@ function bindPages() {
   });
   eventBus.on("pagesinit", () => {
     els.btnRaddrizza.hidden = true;
+    els.tempoLettura.hidden = true;
     nascondiAvviso();
     analizzaDocumento(pdfViewer.pdfDocument);
   });
@@ -254,15 +255,49 @@ async function analizzaDocumento(doc) {
     const righeVuote = (testoPagine.match(/_{4,}|\.{6,}/g) || []).length;
     const modulo = !giaCompilato && (campiVuoti >= 3 || parole >= 3 || (parole >= 2 && righeVuote >= 3) || (scansione && parole >= 2));
     const lungo = !modulo && (doc.numPages >= 3 || testoPagine.length >= 4000);
+    // tempo di lettura e lingua, da tutto il testo (le scansioni: dalle pagine lette, in proporzione)
+    const tutto = await documentText(doc);
+    if (!ancora()) return;
+    const conTesto = tutto.filter((t) => t.trim()).length || 1;
+    const quanteParole = tutto.join(" ").split(/\s+/).filter((w) => /\p{L}/u.test(w)).length * (scansione ? doc.numPages / conTesto : 1);
+    const minuti = Math.max(1, Math.round(quanteParole / 200)); // ~200 parole al minuto, lettura attenta
+    if (quanteParole >= 60) {
+      els.tempoLettura.textContent = `≈ ${minuti} min`;
+      els.tempoLettura.title = `Circa ${minuti} ${minuti === 1 ? "minuto" : "minuti"} per leggerlo tutto (${Math.round(quanteParole)} parole)`;
+      els.tempoLettura.hidden = false;
+    }
+    const lingua = linguaDi(tutto.join(" ").slice(0, 20000));
+    if (lingua && lingua !== "it" && !els.btnTraduci.hidden) {
+      proposte.push({ azione: "traduci", testo: `È in ${NOMI_LINGUE[lingua]}: posso tradurlo.` });
+    }
     if (modulo && !els.btnFill.hidden) {
       proposte.push({ azione: "compila", testo: "Sembra un modulo da compilare." });
     } else if (lungo && !els.btnSum.hidden) {
-      proposte.push({ azione: "riassumi", testo: `È un documento di ${doc.numPages} ${doc.numPages === 1 ? "pagina" : "pagine"}: posso riassumerlo.` });
+      proposte.push({ azione: "riassumi", testo: `È un documento di ${doc.numPages} ${doc.numPages === 1 ? "pagina" : "pagine"} (circa ${minuti} min di lettura): posso riassumerlo.` });
     }
     if (proposte.length) mostraProposte(proposte);
   } catch (e) {
     console.warn("analisi del documento:", e);
   }
+}
+
+// La lingua di un testo, dalle parole più comuni (null se non si capisce o è troppo corto).
+const LINGUE = {
+  it: ["il", "la", "di", "che", "e", "per", "non", "del", "della", "un", "una", "con", "sono", "nel", "alla"],
+  en: ["the", "and", "of", "to", "is", "for", "with", "that", "this", "are", "on", "be", "by", "from", "shall"],
+  de: ["der", "die", "und", "das", "nicht", "mit", "ist", "für", "den", "von", "zu", "sich", "auf", "eine"],
+  fr: ["le", "les", "des", "et", "est", "pour", "avec", "dans", "une", "du", "au", "pas", "sur", "qui"],
+  es: ["el", "los", "las", "y", "es", "para", "con", "que", "una", "del", "por", "se", "como", "al"],
+};
+const NOMI_LINGUE = { en: "inglese", de: "tedesco", fr: "francese", es: "spagnolo" };
+function linguaDi(testoDoc) {
+  const parole = testoDoc.toLowerCase().match(/\p{L}+/gu) || [];
+  if (parole.length < 40) return null;
+  const conti = Object.fromEntries(Object.keys(LINGUE).map((l) => [l, 0]));
+  const insiemi = Object.fromEntries(Object.entries(LINGUE).map(([l, ws]) => [l, new Set(ws)]));
+  for (const w of parole) for (const l in insiemi) if (insiemi[l].has(w)) conti[l]++;
+  const [prima, seconda] = Object.entries(conti).sort((a, b) => b[1] - a[1]);
+  return prima[1] >= 8 && prima[1] >= 1.5 * seconda[1] ? prima[0] : null;
 }
 
 // La barra delle proposte sopra la pagina, con le azioni lì accanto.
@@ -273,6 +308,7 @@ const AZIONI = {
   }],
   compila: ["Compila", () => els.btnFill.click()],
   riassumi: ["Riassumi", () => els.btnSum.click()],
+  traduci: ["Traduci", () => els.btnTraduci.click()],
 };
 let proposteOra = [];
 function mostraProposte(proposte) {
@@ -443,6 +479,12 @@ export async function documentText(pdf) {
   return out;
 }
 export const isShotMode = testo.isShotMode;
+export const trovaFrase = testo.trovaFrase;
+export const sottolinea = testo.underline;
+export const pageView = (i) => pdfViewer.getPageView(i);
+export function vaiPagina(n) {
+  pdfViewer.currentPageNumber = Math.min(Math.max(1, n), pdfViewer.pagesCount);
+}
 
 let imageGuard = null;
 let touchGuard = null;

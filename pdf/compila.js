@@ -284,30 +284,33 @@ async function invia(file, notes, profilo, ui) {
  * «Riassumi»: il testo delle pagine va al compilatore, che lo fa riassumere all'AI.
  * @returns {Promise<string>} il riassunto in Markdown semplice
  */
-export async function riassumi(name, pages, ui) {
+// compito: "riassumi" (Markdown), "traduci" (Markdown, tutto il documento), "punti" (le frasi da sottolineare)
+export async function riassumi(name, pages, ui, compito = "riassumi") {
   const cfg = config();
-  if (!cfg) throw new Error("Per riassumere collega prima il compilatore.");
+  if (!cfg) throw new Error("Per usare l'AI collega prima il compilatore.");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
-  ui.busy("Riassumo il documento… (di solito meno di un minuto)", { onCancel: () => ctrl.abort() });
+  ui.busy({ traduci: "Traduco il documento… (può volerci un paio di minuti)",
+    punti: "Cerco i punti importanti… (di solito meno di un minuto)" }[compito] || "Riassumo il documento… (di solito meno di un minuto)",
+  { onCancel: () => ctrl.abort() });
   try {
     let res;
     try {
       res = await fetch(cfg.url + "/riassumi", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.chiave },
-        body: JSON.stringify({ nome: name, pagine: pages }),
+        body: JSON.stringify({ nome: name, pagine: pages, compito }),
         signal: ctrl.signal,
         ...addressSpace(cfg.url),
       });
     } catch (e) {
-      if (e.name === "AbortError") throw new Error("Riassunto annullato.");
+      if (e.name === "AbortError") throw new Error("Annullato.");
       throw new Error("Compilatore non raggiungibile (serve la rete privata o quella dell'ufficio).");
     }
     const out = await res.json().catch(() => ({}));
     if (res.status === 401) throw new Error("Il compilatore non riconosce questo dispositivo: ricollegalo.");
-    if (!res.ok || !out.riassunto) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
-    return out.riassunto;
+    if (!res.ok || !(out.riassunto || out.punti)) throw new Error(out.errore || `Il compilatore ha risposto con un errore (${res.status}).`);
+    return compito === "punti" ? out.punti : out.riassunto;
   } finally {
     clearTimeout(timer);
     ui.idle();
@@ -384,7 +387,7 @@ export function renderSummary(panel, body, md, name, kind = "riassunto") {
   if (title) title.textContent = traduci ? "Traduzione" : spiega ? "Spiegazione" : "Riassunto";
   body.replaceChildren(
     h("p", { class: "fill-hint" }, traduci
-      ? `Traduzione dell'AI di un pezzo di «${name}»: per un uso ufficiale serve una traduzione verificata.`
+      ? `Traduzione dell'AI di «${name}»: per un uso ufficiale serve una traduzione verificata.`
       : spiega
         ? `Spiegazione dell'AI di un pezzo di «${name}»: è un aiuto a capire, il testo che vale è quello del documento.`
         : `Riassunto di «${name}», scritto dall'AI: controlla i dati importanti sul documento.`),
@@ -398,6 +401,21 @@ export function renderSummary(panel, body, md, name, kind = "riassunto") {
           e.target.textContent = "Non riesco a copiare";
         }
       } }, traduci ? "Copia la traduzione" : spiega ? "Copia la spiegazione" : "Copia il riassunto")));
+  panel.hidden = false;
+}
+
+/** I punti sottolineati dall'AI, con il perché; cliccando si va alla pagina. trovati = quanti ritrovati sulla pagina. */
+export function renderPunti(panel, body, punti, name, vai) {
+  const title = panel.querySelector("h2");
+  if (title) title.textContent = "Punti importanti";
+  const trovati = punti.filter((p) => p.trovato).length;
+  body.replaceChildren(
+    h("p", { class: "fill-hint" }, `Scelti dall'AI in «${name}» e sottolineati in rosso nel documento` +
+      (trovati < punti.length ? ` (${punti.length - trovati} non ritrovati sulla pagina: sono qui sotto, senza sottolineatura).` : ".")),
+    h("ul", { class: "fill-list" }, punti.map((p) => h("li", { class: "fill-vai", onclick: () => vai(p.pagina) },
+      h("strong", null, p.perche || "Da notare"), h("span", null, `«${p.frase}»`),
+      h("em", { class: "fill-fonte" }, `pag. ${p.pagina}${p.trovato ? "" : " · non ritrovato"}`)))),
+    h("p", { class: "fill-hint" }, "Le sottolineature si tolgono con «Annulla» e restano nel PDF salvato."));
   panel.hidden = false;
 }
 

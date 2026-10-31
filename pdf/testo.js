@@ -1060,6 +1060,60 @@ export function modalitaNormale() {
 
 export const underline = (pick) => annotate(pick, "sottolinea");
 
+const normale = (t) => t.toLowerCase().replace(/[\u2019']/g, "'").replace(/\s+/g, " ");
+
+/**
+ * Dove sta una frase sulla pagina: riquadri (frazioni della pagina, come annotate) dal testo del PDF o, sulle
+ * scansioni, da quello letto con l'OCR. Cerca la frase intera; se non c'è, le sue prime 8 parole. null se non la trova.
+ */
+export async function trovaFrase(view, frase) {
+  const [vx0, vy0, vx1, vy1] = view.pdfPage.view;
+  const W = vx1 - vx0;
+  const H = vy1 - vy0;
+  // pezzi = [{ testo, x0, x1, y0, y1 }] in coordinate PDF, nell'ordine di lettura
+  const pezzi = [];
+  for (const it of (await view.pdfPage.getTextContent()).items) {
+    if (!it.str) continue;
+    const h = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+    pezzi.push({ testo: it.str, x0: it.transform[4], x1: it.transform[4] + it.width, y0: it.transform[5] - 0.2 * h, y1: it.transform[5] + 0.8 * h });
+  }
+  const d = pages() && pages().get(view.id);
+  if (d && Array.isArray(d.ocr)) {
+    for (const l of d.ocr) for (const w of l.words || [l]) pezzi.push({ testo: w.text, x0: w.x0, x1: w.x1, y0: w.y0, y1: w.y1 });
+  }
+  let tutto = "";
+  const dove = []; // per ogni pezzo, l'inizio nel testo unito
+  for (const p of pezzi) {
+    dove.push(tutto.length);
+    tutto += normale(p.testo) + " ";
+  }
+  const cerca = [normale(frase).trim(), normale(frase).trim().split(" ").slice(0, 8).join(" ")];
+  let da = -1;
+  let lung = 0;
+  for (const c of cerca) {
+    da = tutto.indexOf(c);
+    if (da >= 0 && c.length >= 6) {
+      lung = c.length;
+      break;
+    }
+  }
+  if (da < 0 || !lung) return null;
+  const a = da + lung;
+  const boxes = [];
+  pezzi.forEach((p, i) => {
+    const s = dove[i];
+    const e = s + normale(p.testo).length;
+    if (e <= da || s >= a) return;
+    const n = Math.max(1, e - s);
+    const f0 = Math.max(0, da - s) / n;
+    const f1 = Math.min(n, a - s) / n;
+    const x0 = p.x0 + (p.x1 - p.x0) * f0;
+    const x1 = p.x0 + (p.x1 - p.x0) * f1;
+    boxes.push({ x: (x0 - vx0) / W, y: (vy1 - p.y1) / H, width: (x1 - x0) / W, height: (p.y1 - p.y0) / H });
+  });
+  return boxes.length ? boxes : null;
+}
+
 /** Sottolinea o evidenzia (in giallo) i pezzi scelti. Ritorna quante pagine ha toccato. */
 export async function annotate(pick, kind) {
   if (!pick || !pick.pages.length) {
