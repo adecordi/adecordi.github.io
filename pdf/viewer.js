@@ -162,7 +162,10 @@ function bindPages() {
     els.pageNumber.max = pdfViewer.pagesCount;
     updatePageControls(pdfViewer.currentPageNumber);
   });
-  eventBus.on("pagechanging", ({ pageNumber }) => updatePageControls(pageNumber));
+  eventBus.on("pagechanging", ({ pageNumber }) => {
+    updatePageControls(pageNumber);
+    if (ui.paginaCambiata) ui.paginaCambiata(pageNumber); // i segnalibri propongono «Pagina N»
+  });
 
   els.pageNumber.addEventListener("change", () => {
     const n = Math.min(Math.max(1, parseInt(els.pageNumber.value, 10) || 1), pdfViewer.pagesCount);
@@ -187,6 +190,7 @@ function bindPages() {
   eventBus.on("pagesinit", () => {
     els.btnRaddrizza.hidden = true;
     els.tempoLettura.hidden = true;
+    linguaOra = null;
     nascondiAvviso();
     analizzaDocumento(pdfViewer.pdfDocument);
   });
@@ -267,6 +271,7 @@ async function analizzaDocumento(doc) {
       els.tempoLettura.hidden = false;
     }
     const lingua = linguaDi(tutto.join(" ").slice(0, 20000));
+    linguaOra = lingua;
     if (lingua && lingua !== "it" && !els.btnTraduci.hidden) {
       proposte.push({ azione: "traduci", testo: `È in ${NOMI_LINGUE[lingua]}: posso tradurlo.` });
     }
@@ -465,25 +470,61 @@ export const setBoxMode = testo.setBoxMode;
 export const isBoxMode = testo.isBoxMode;
 export const setShotMode = testo.setShotMode;
 
+// Il testo del PDF si estrae una volta per documento: la lettura ad alta voce lo vuole subito, dentro il tocco
+// (31/10/2026). L'OCR arriva dopo e si aggiunge a ogni richiesta.
+const testiPdf = new WeakMap(); // documento -> { promessa, pagine }
+function testoPdf(pdf) {
+  let t = testiPdf.get(pdf);
+  if (!t) {
+    t = { pagine: null };
+    t.promessa = (async () => {
+      const out = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const tc = await page.getTextContent();
+        let s = "";
+        for (const it of tc.items) s += (it.str || "") + (it.hasEOL ? "\n" : "");
+        out.push(s.trim());
+      }
+      t.pagine = out;
+      return out;
+    })().catch((e) => {
+      testiPdf.delete(pdf); // si riprova alla prossima richiesta
+      throw e;
+    });
+    testiPdf.set(pdf, t);
+  }
+  return t;
+}
+const conOcr = (pagine) => pagine.map((t, i) => [t, testo.ocrText(i + 1)].filter(Boolean).join("\n"));
+
 /** Il testo di ogni pagina: quello vero del PDF più quello riconosciuto con l'OCR. */
 export async function documentText(pdf) {
-  const out = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const tc = await page.getTextContent();
-    let t = "";
-    for (const it of tc.items) t += (it.str || "") + (it.hasEOL ? "\n" : "");
-    const ocr = testo.ocrText(i);
-    out.push([t.trim(), ocr].filter(Boolean).join("\n"));
-  }
-  return out;
+  return conOcr(await testoPdf(pdf).promessa);
 }
+
+/** Lo stesso, senza aspettare: null se il testo non è ancora stato estratto. */
+export function testoPronto(pdf) {
+  const t = testiPdf.get(pdf);
+  return t && t.pagine ? conOcr(t.pagine) : null;
+}
+
+/** La lingua riconosciuta del documento in vista («en», «de»…; null se italiano o non si sa), per la voce che legge. */
+let linguaOra = null;
+export const linguaDocumento = () => linguaOra;
 export const isShotMode = testo.isShotMode;
 export const trovaFrase = testo.trovaFrase;
 export const sottolinea = testo.underline;
 export const pageView = (i) => pdfViewer.getPageView(i);
 export function vaiPagina(n) {
   pdfViewer.currentPageNumber = Math.min(Math.max(1, n), pdfViewer.pagesCount);
+}
+// Per i segnalibri (31/10/2026): il PDF aperto, la pagina in vista e il salto a una voce dell'indice del PDF
+// (`dest` com'è in getOutline(): nome o array, li capisce il link service).
+export const documento = () => pdfViewer.pdfDocument;
+export const paginaCorrente = () => pdfViewer.currentPageNumber;
+export function vaiDestinazione(dest) {
+  return linkService.goToDestination(dest);
 }
 
 let imageGuard = null;
@@ -701,6 +742,7 @@ function bindFind() {
       dispatchFind("again", e.shiftKey);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation(); // l'Esc è per chiudere la ricerca: la finestra non deve anche fermare la lettura o la firma
       closeFind();
     }
   });

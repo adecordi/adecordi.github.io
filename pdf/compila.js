@@ -543,11 +543,12 @@ export function renderReport(panel, body, report, azioni = {}) {
       h("em", { class: "fill-fonte" }, FONTI[c.fonte] || "dedotto dall'AI"), verifica);
   };
   const conteggi = h("p", { class: "fill-summary" });
-  const aggiornaConteggi = () => conteggi.replaceChildren(
+  // replaceChildren non salta i null come fa h(): senza il filtro nel pannello compariva la parola «null» (31/10/2026)
+  const aggiornaConteggi = () => conteggi.replaceChildren(...[
     `${compilati.length} compilati · ${mancanti.length} da completare · ${daVerificareOra.size} da verificare`,
-    report.metodo === "posizioni" ? h("small", null, " (modulo senza campi: ho aggiunto i campi sopra la pagina)") : null);
+    report.metodo === "posizioni" ? h("small", null, " (modulo senza campi: ho aggiunto i campi sopra la pagina)") : null].filter(Boolean));
   aggiornaConteggi();
-  body.replaceChildren(
+  body.replaceChildren(...[
     conteggi,
     report.dalla_memoria ? h("p", { class: "fill-hint" }, "⚡ Compilato subito dalla memoria: questo modulo, con questi dati, era già stato compilato negli ultimi 30 giorni.") : null,
     // dati delicati della Vinicola cambiati nella cassaforte aziendale (vedi sorveglianza.py del compilatore)
@@ -562,7 +563,7 @@ export function renderReport(panel, body, report, azioni = {}) {
       h("ul", { class: "fill-list" }, delicati.map(voceCompilata))) : null,
     compilati.length > delicati.length ? h("section", null, h("h3", null, "Compilati"),
       h("p", { class: "fill-hint" }, "Clicca un dato per vederlo nel modulo."),
-      h("ul", { class: "fill-list" }, compilati.filter((c) => !eDelicato(c)).map(voceCompilata))) : null);
+      h("ul", { class: "fill-list" }, compilati.filter((c) => !eDelicato(c)).map(voceCompilata))) : null].filter(Boolean));
   panel.hidden = false;
 }
 

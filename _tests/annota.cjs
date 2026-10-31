@@ -60,7 +60,7 @@ const FAKE = "https://compilatore.prova";
 
     // --- Testo: menu con le cinque voci
     const r1 = await seleziona(/Riga 1/);
-    check("menu del testo: Copia, Sottolinea, Evidenzia, Traduci, Spiega", (await voci()) === "Copia,Sottolinea,Evidenzia,Traduci,Spiega", await voci());
+    check("menu del testo: Copia, Sottolinea, Evidenzia, Traduci, Spiega, Leggi", (await voci()) === "Copia,Sottolinea,Evidenzia,Traduci,Spiega,Leggi", await voci());
     await page.click(".copy-pill [data-a='sottolinea']");
     await page.waitForTimeout(400);
     check("sottolineatura disegnata", (await strisce()) === 1);
@@ -109,7 +109,7 @@ const FAKE = "https://compilatore.prova";
     const r6 = await span(/Riga 6/);
     await drag([r6.x - 4, r6.y - 2], [r6.x + r6.width + 4, r6.y + r6.height + 2]);
     await page.waitForSelector(".copy-pill:not([hidden])");
-    check("menu del riquadro: + Immagine", (await voci()) === "Copia,Sottolinea,Evidenzia,Traduci,Spiega,Immagine", await voci());
+    check("menu del riquadro: + Immagine", (await voci()) === "Copia,Sottolinea,Evidenzia,Traduci,Spiega,Leggi,Immagine", await voci());
     check("il riquadro non copia da solo", (await page.evaluate(() => navigator.clipboard.readText())) === "vuoto");
     await page.click(".copy-pill [data-a='sottolinea']");
     await page.waitForTimeout(400);

@@ -922,15 +922,15 @@ export function selectInRect(units, r) {
 
 /* -------------------------------------------- Menu dopo la selezione */
 
-// Copia · Sottolinea · Evidenzia · Traduci · Spiega, e col riquadro anche Immagine
-// (Alessandro, 29/10/2026). ctx = { text, pick, view, box? }.
+// Copia · Sottolinea · Evidenzia · Traduci · Spiega · Leggi (ad alta voce, 31/10/2026), e col riquadro anche
+// Immagine (Alessandro, 29/10/2026). ctx = { text, pick, view, box? }.
 function showMenu(x, y, ctx) {
   if (!pill) {
     pill = document.createElement("div");
     pill.className = "copy-pill";
     pill.setAttribute("role", "menu");
     pill.innerHTML = [["copia", "Copia"], ["sottolinea", "Sottolinea"], ["evidenzia", "Evidenzia"], ["traduci", "Traduci"],
-      ["spiega", "Spiega"], ["immagine", "Immagine"]].map(([a, t]) => `<button type="button" role="menuitem" data-a="${a}">${t}</button>`).join("");
+      ["spiega", "Spiega"], ["leggi", "Leggi"], ["immagine", "Immagine"]].map(([a, t]) => `<button type="button" role="menuitem" data-a="${a}">${t}</button>`).join("");
     pill.addEventListener("pointerdown", (ev) => ev.preventDefault()); // non perdere la selezione
     pill.addEventListener("click", (ev) => {
       const a = ev.target.closest("button")?.dataset.a;
@@ -942,7 +942,7 @@ function showMenu(x, y, ctx) {
   const conTesto = !!(ctx.text && ctx.text.trim());
   const ai = !!(ui.canExplain && ui.canExplain());
   const vis = { copia: conTesto, sottolinea: conTesto, evidenzia: conTesto, traduci: conTesto,
-    spiega: ai && (conTesto || !!ctx.box), immagine: !!ctx.box };
+    spiega: ai && (conTesto || !!ctx.box), leggi: conTesto && !!(ui.canLeggi && ui.canLeggi()), immagine: !!ctx.box };
   for (const btn of pill.querySelectorAll("button")) btn.hidden = !vis[btn.dataset.a];
   if (!Object.values(vis).some(Boolean)) return hidePill();
   pill.hidden = false;
@@ -975,6 +975,10 @@ async function menuAction(a, ctx) {
         ui.toast(`Non riesco a preparare l'immagine: ${e.message || e}`, "error");
       }
     }
+  } else if (a === "leggi") {
+    // senza await prima: su iOS la voce parte solo dentro il tocco
+    libera();
+    if (ui.leggi) ui.leggi(ctx.text, ctx.view);
   } else if (a === "immagine") {
     shoot(ctx.box);
   }

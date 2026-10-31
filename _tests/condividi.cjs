@@ -33,7 +33,7 @@ function stub(mode) {
   check("senza documento condivide il link", ((await last(p)) || {}).url === BASE);
   await openFixture(p, "doc.pdf.p7m");
   await p.click("#btnShare");
-  check("p7m: menu con due scelte", (await p.$$(".share-option")).length === 2);
+  check("p7m: menu con due scelte", (await p.$$("#shareMenu .share-option")).length === 2); // le voci di «Altro» hanno la stessa classe
   await p.click(".share-option:has-text('File firmato originale')");
   check("condivide il p7m originale", ((await last(p)) || {}).files?.[0] === "doc.pdf.p7m");
   await p.click("#btnShare");

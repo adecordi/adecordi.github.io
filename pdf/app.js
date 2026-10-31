@@ -1,6 +1,9 @@
 import { unwrap, sniff, innerFileName } from "./p7m.js";
 import { h, icon } from "./dom.js";
 import * as compilatore from "./compila.js";
+import * as vista from "./vista.js";
+import * as segnalibri from "./segnalibri.js";
+import * as leggi from "./leggi.js";
 
 const SHARED_CACHE = "lettore-pdf-condivisi";
 const BUSY_DELAY = 200; // le aperture rapide non mostrano l'indicatore di attesa
@@ -30,6 +33,10 @@ const els = {
   btnRotate: $("btnRotate"),
   btnRaddrizza: $("btnRaddrizza"),
   btnFind: $("btnFind"),
+  btnSegnalibri: $("btnSegnalibri"),
+  segPanel: $("segPanel"),
+  segBody: $("segBody"),
+  segClose: $("segClose"),
   btnBox: $("btnBox"),
   btnSelText: $("btnSelText"),
   btnNote: $("btnNote"),
@@ -53,9 +60,16 @@ const els = {
   fillClose: $("fillClose"),
   signBar: $("signBar"),
   signDone: $("signDone"),
+  leggiBar: $("leggiBar"),
+  leggiStato: $("leggiStato"),
+  leggiVelocita: $("leggiVelocita"),
+  leggiPausa: $("leggiPausa"),
+  leggiFerma: $("leggiFerma"),
   btnDownload: $("btnDownload"),
   btnShare: $("btnShare"),
   shareMenu: $("shareMenu"),
+  btnAltro: $("btnAltro"),
+  menuAltro: $("menuAltro"),
   btnPrint: $("btnPrint"),
   findbar: $("findbar"),
   findInput: $("findInput"),
@@ -128,6 +142,8 @@ function loadViewer() {
     viewerLoading = Promise.all([import("./viewer.js"), loadStylesheet("lib/pdfjs/pdf_viewer.min.css")]).then(([mod]) => {
       mod.init(els, { hasPdf: () => !!(doc && doc.pdf), busy, idle, toast, h, workerPort,
         spiega: explain, canExplain: () => !!compilatore.config(),
+        leggi: (testo, view) => leggi.leggiTesto(testo, view), canLeggi: () => leggi.disponibile(),
+        paginaCambiata: (n) => segnalibri.pagina(n),
         signEditing: () => {
           els.signBarText.textContent = "Trascina la firma dove serve e ridimensionala dagli angoli.";
           els.signBar.hidden = false;
@@ -248,11 +264,14 @@ async function closeDocument() {
   if (printJob) printJob.cancelled = true;
   clearPrint();
   closeShareMenu();
+  closeAltroMenu();
+  leggi.ferma(); // la voce non deve continuare sul documento che se ne va
   if (V) V.closeFind();
   els.sigPanel.hidden = true;
   els.sigChip.hidden = true;
   els.fillPanel.hidden = true;
   els.sumPanel.hidden = true;
+  segnalibri.chiudi();
   els.signBar.hidden = true;
   // la modalità firma spegne la selezione del testo: se si cambia documento senza «Fatto» (succede sull'iPad)
   // restava spenta anche sul documento nuovo (30/10/2026)
@@ -312,6 +331,7 @@ async function showPdf(seq) {
   };
   viewer.show(pdf, prossimiAngoli);
   prossimiAngoli = null;
+  segnalibri.apri(doc.data); // i segnalibri sono legati ai byte com'erano all'apertura
   els.viewerContainer.focus({ preventScroll: true });
 }
 
@@ -753,6 +773,8 @@ Salvo lo stesso?`)) return;
   const current = doc;
   const data = await documentBytes(current);
   saveBytes(data, current.name, current.type.mime);
+  // con le annotazioni i byte cambiano: i segnalibri seguono anche il file salvato (31/10/2026)
+  if (data !== current.data) segnalibri.copiaPer(current.data, data);
   current.modificato = false;
   dimenticaBozza();
 }
@@ -792,6 +814,7 @@ setInterval(async () => {
     if (doc !== d || bytes.length > 40e6) return;
     impronta = h;
     await bozza("scrivi", { nome: d.name, bytes, quando: Date.now() });
+    segnalibri.copiaPer(d.data, bytes); // «Riprendi» riapre questi byte: i segnalibri devono stare anche sotto la loro impronta
   } catch (e) {
     console.warn("bozza:", e);
   }
@@ -1089,7 +1112,9 @@ async function shareDocument() {
   if (!doc) return shareApp();
   const current = doc;
   const options = [];
-  const extracted = new File([await documentBytes()], current.name, { type: current.type.mime });
+  const dati = await documentBytes(current);
+  if (dati !== current.data) segnalibri.copiaPer(current.data, dati); // come in downloadDocument: Condividi è anche una via di salvataggio
+  const extracted = new File([dati], current.name, { type: current.type.mime });
   if (canShareFile(extracted)) {
     options.push({ title: current.layers.length ? "Documento estratto" : "Documento", file: extracted });
   }
@@ -1118,6 +1143,22 @@ async function shareDocument() {
   els.shareMenu.querySelector("button").focus();
 }
 
+// Menu «Altro» (31/10/2026): le funzioni che non meritano un pulsante nella barra. Le voci le mettono i moduli
+// (oggi il filtro di lettura, vista.js, e la lettura ad alta voce, leggi.js); qui solo apri e chiudi.
+function closeAltroMenu() {
+  els.menuAltro.hidden = true;
+  els.btnAltro.setAttribute("aria-expanded", "false");
+}
+
+function toggleAltroMenu() {
+  if (!els.menuAltro.hidden) return closeAltroMenu();
+  leggi.prepara(); // il testo da leggere si estrae ora: al tocco sulla voce dev'essere già pronto (iOS)
+  els.menuAltro.hidden = false;
+  els.btnAltro.setAttribute("aria-expanded", "true");
+  const prima = els.menuAltro.querySelector("button:not(:disabled)");
+  if (prima) prima.focus();
+}
+
 /* ------------------------------------------------------- Stato comandi */
 
 function updateControls() {
@@ -1141,6 +1182,7 @@ function updateControls() {
   els.btnPunti.hidden = !(isPdf && compilatore.config());
   if (!hasDoc) els.tempoLettura.hidden = true;
   els.btnShare.title = hasDoc ? "Condividi il documento" : "Condividi il lettore";
+  els.btnAltro.hidden = !isPdf; // filtro e lettura ad alta voce lavorano sulla pagina del PDF: su immagini e testi non farebbero nulla
   els.btnPrint.disabled = !hasDoc || doc.printable === false || doc.type.kind === "binary" || (doc.type.kind === "pdf" && !isPdf);
 }
 
@@ -1159,9 +1201,17 @@ els.btnBack.addEventListener("click", () => {
 });
 els.btnDownload.addEventListener("click", downloadDocument);
 els.btnShare.addEventListener("click", shareDocument);
+els.btnAltro.addEventListener("click", toggleAltroMenu);
 document.addEventListener("pointerdown", (e) => {
-  if (!els.shareMenu.hidden && !e.target.closest(".share-wrap")) closeShareMenu();
+  // ogni menu guarda il SUO contenitore: sono entrambi .share-wrap, e un clic su «Altro» lasciava aperto Condividi
+  if (!els.shareMenu.hidden && !els.shareMenu.parentElement.contains(e.target)) closeShareMenu();
+  if (!els.menuAltro.hidden && !els.menuAltro.parentElement.contains(e.target)) closeAltroMenu();
 });
+vista.avvia();
+vista.vociMenu(els.menuAltro, closeAltroMenu);
+leggi.init(els, { viewer: () => V, pdf: () => (doc && doc.pdf) || null, toast });
+leggi.vociMenu(els.menuAltro, closeAltroMenu);
+segnalibri.init(els, { viewer: () => V, toast });
 els.btnPrint.addEventListener("click", printDocument);
 els.btnSign.addEventListener("click", addSignature);
 els.signDone.addEventListener("click", endSignature);
@@ -1240,9 +1290,12 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     V.zoomReset();
   } else if (e.key === "Escape") {
-    if (!els.shareMenu.hidden) closeShareMenu();
+    if (!els.menuAltro.hidden) closeAltroMenu();
+    else if (!els.shareMenu.hidden) closeShareMenu();
+    else if (!els.leggiBar.hidden) leggi.ferma();
     else if (!els.signBar.hidden) endSignature();
     else if (V && V.isBoxMode()) V.setBoxMode(false);
+    else if (!els.segPanel.hidden) segnalibri.mostra(false);
     else if (!els.sumPanel.hidden) els.sumPanel.hidden = true;
     else if (!els.fillPanel.hidden) els.fillPanel.hidden = true;
     else if (!els.sigPanel.hidden) toggleSigPanel(false);
@@ -1255,8 +1308,18 @@ window.addEventListener("keydown", (e) => {
 // Spiegazione, riassunto, modulo compilato e firme non coprono il PDF: gli stanno accanto
 // (Alessandro, 29/10/2026: «il testo e il PDF insieme»). Lo spazio lo divide il CSS.
 {
-  const pannelli = [els.sumPanel, els.fillPanel, els.sigPanel];
-  const aggiorna = () => document.body.classList.toggle("panel-open", pannelli.some((p) => !p.hidden));
+  const pannelli = [els.sumPanel, els.fillPanel, els.sigPanel, els.segPanel];
+  // il pulsante che apre il pannello, per tenergli aria-expanded allineato
+  const apritori = new Map([[els.sigPanel, els.sigChip], [els.segPanel, els.btnSegnalibri]]);
+  const aggiorna = (records) => {
+    // uno solo alla volta (31/10/2026): quello appena aperto chiude gli altri
+    for (const r of records) {
+      if (r.target.hidden) continue;
+      for (const p of pannelli) if (p !== r.target && !p.hidden) p.hidden = true;
+    }
+    for (const [p, b] of apritori) b.setAttribute("aria-expanded", String(!p.hidden));
+    document.body.classList.toggle("panel-open", pannelli.some((p) => !p.hidden));
+  };
   const mo = new MutationObserver(aggiorna);
   for (const p of pannelli) mo.observe(p, { attributes: true, attributeFilter: ["hidden"] });
 }

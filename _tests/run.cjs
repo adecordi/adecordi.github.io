@@ -5,10 +5,11 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 
-const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs", "strumenti.cjs", "annota.cjs", "tocco.cjs", "raddrizza.cjs", "uscita.cjs", "colleghi.cjs", "nitido.cjs", "sottolinea_storta.cjs", "ocr_storta.cjs", "proposte.cjs", "traduci.cjs", "impostazioni.cjs"];
+const TESTS = ["unwrap.mjs", "e2e.cjs", "mobile.cjs", "condividi.cjs", "ricezione.cjs", "outlook.cjs", "link.cjs", "stampa.cjs", "jpx.cjs", "strumenti.cjs", "annota.cjs", "tocco.cjs", "raddrizza.cjs", "uscita.cjs", "colleghi.cjs", "nitido.cjs", "sottolinea_storta.cjs", "ocr_storta.cjs", "proposte.cjs", "traduci.cjs", "impostazioni.cjs", "filtro.cjs", "segnalibri.cjs", "leggi.cjs"];
 const selected = process.argv.slice(2).length ? process.argv.slice(2).map((t) => TESTS.find((x) => x.startsWith(t)) || t) : TESTS;
 
-if (!fs.existsSync(path.join(__dirname, "fixtures", "out", "scansione.pdf"))) {
+// indice.pdf è del 31/10/2026: chi ha i file di prova vecchi li rigenera
+if (["scansione.pdf", "indice.pdf"].some((f) => !fs.existsSync(path.join(__dirname, "fixtures", "out", f)))) {
   console.log("Genero i file di prova…");
   const r = spawnSync("bash", [path.join(__dirname, "fixtures", "genera.sh")], { stdio: "inherit" });
   if (r.status !== 0) process.exit(r.status || 1);

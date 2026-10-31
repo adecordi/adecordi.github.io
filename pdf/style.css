@@ -133,7 +133,7 @@ body {
 
 .toolbar {
   position: relative;
-  z-index: 20;
+  z-index: 35; /* sopra l'avviso delle proposte (30, dentro main): i menu a tendina della barra non ci finiscono sotto (31/10/2026) */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -932,7 +932,7 @@ body.outlook .welcome { place-items: start center; }
 
 /* ----------------------------- Anteprima di Outlook classico / Esplora file */
 
-body.anteprima :is(#btnOpen, #btnInstall, .share-wrap, #btnWindow) { display: none !important; }
+body.anteprima :is(#btnOpen, #btnInstall, .share-wrap:has(> #btnShare), #btnWindow) { display: none !important; }
 body.anteprima .ocr-wrap { display: block !important; }
 body.anteprima .welcome .drop-card { display: none; }
 
@@ -970,6 +970,10 @@ body.anteprima .welcome .drop-card { display: none; }
   .toolbar { gap: 6px 8px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
   .tb-file { flex: 1 1 0; }
   .tb-view { order: 3; width: 100%; justify-content: space-between; gap: 6px; }
+  /* col compilatore (AI, Firma, Esporta con «Altro», Impostazioni) i pulsanti sono più larghi dello schermo: vanno a
+     capo, col gruppo AI (che c'è solo col compilatore) per ultimo, sulla riga in più */
+  .tb-actions { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+  .tb-actions .tb-cluster[aria-label="AI"] { order: 1; }
   .btn-label { display: none; }
   #btnOpen, .tb-actions .btn { width: 38px; padding: 0; }
   #zoomSelect { max-width: 118px; }
@@ -1086,13 +1090,16 @@ body.anteprima .welcome .drop-card { display: none; }
 .toolbar .btn[aria-pressed="true"], .toolbar .btn[aria-expanded="true"] { background: var(--tb-on); }
 .toolbar .page-box input, .toolbar #zoomSelect { background: var(--surface); border-color: transparent; }
 .toolbar #btnOpen { background: var(--tb-pill); }
-@media (min-width: 1000px) {
+/* Soglie alzate il 31/10/2026 coi pulsanti «Segnalibri» e «Altro»: su una riga, col compilatore e la spunta della firma,
+   sotto i 1440 px il nome del file spariva e la spunta finiva sotto «Pagine» (misurato a 1366: mancavano 65 px). La tendina
+   dello zoom (150 px) si nasconde solo dove la riga unica non la contiene; nelle due righe c'è posto. */
+@media (min-width: 1440px) {
   .toolbar { flex-wrap: nowrap; }
 }
-@media (max-width: 1240px) {
+@media (min-width: 1440px) and (max-width: 1599px) {
   #zoomSelect { display: none; }
 }
-@media (min-width: 761px) and (max-width: 999px) {
+@media (min-width: 761px) and (max-width: 1439px) {
   .toolbar { flex-wrap: wrap; row-gap: 8px; }
   .tb-file { flex: 1 1 auto; }
   .tb-view { order: 3; width: 100%; justify-content: center; }
@@ -1216,6 +1223,21 @@ body.outlook .esempi { display: none; }
 .page[data-raddrizza] .annotationLayer[data-main-rotation="0"] { transform: rotate(var(--raddrizza)); transform-origin: 50% 50%; }
 .ocrLayer { transform: rotate(calc(var(--raddrizza, 0deg) + var(--ocr, 0deg))); transform-origin: 50% 50%; }
 
+/* Filtro di lettura «Notte» / «Seppia» (31/10/2026, menu «Altro»): solo sull'immagine della pagina, non sul testo,
+   sulle note né sulla stampa (#printContainer); «filter» e «transform» non si pestano, quindi vale anche raddrizzata. */
+body[data-filtro="notte"] #viewer .canvasWrapper { filter: invert(0.92) hue-rotate(180deg); }
+body[data-filtro="seppia"] #viewer .canvasWrapper { filter: sepia(0.5) contrast(0.95) brightness(0.97); }
+/* I campi dei moduli stanno nell'annotationLayer, fuori dal canvas, e PDF.js scrive in riga il colore del testo (nero) e
+   lo sfondo (chiaro o trasparente): in Notte si invertono anche loro, altrimenti il valore è nero sul foglio scuro. */
+body[data-filtro="notte"] #viewer .annotationLayer :is(.textWidgetAnnotation, .choiceWidgetAnnotation, .buttonWidgetAnnotation) {
+  filter: invert(0.92) hue-rotate(180deg); }
+/* Le bande gialle del riquadro e la frase in lettura: sulla pagina invertita il multiply sparirebbe */
+body[data-filtro="notte"] :is(.boxMark, .leggi-frase) { mix-blend-mode: screen; }
+/* Voci a scelta singola nel menu «Altro»: la spunta davanti a quella attiva */
+.share-option[role="menuitemradio"] { position: relative; padding-left: 30px; }
+.share-option[role="menuitemradio"]::before { content: "✓"; position: absolute; left: 10px; top: 7px; color: var(--accent); font-weight: 700; opacity: 0; }
+.share-option[aria-checked="true"]::before { opacity: 1; }
+
 /* Messaggi d'errore: restano finché non si toccano */
 .toast.error { cursor: pointer; }
 .toast.error::after { content: "  ✕"; opacity: 0.8; }
@@ -1252,13 +1274,50 @@ body.outlook .esempi { display: none; }
 #viewer .annotationLayer :is(.textWidgetAnnotation :is(input, textarea), .choiceWidgetAnnotation select):focus {
   background-color: rgb(35 87 209 / 0.1); border-color: #2357d1; }
 
-/* Mentre si firma o si scrive una nota, le proposte (Raddrizza/Compila/Riassumi) si tolgono: coprirebbero «Fatto» */
-main:has(.sign-bar:not([hidden])) .avviso-storta { display: none; }
+/* Mentre si firma o si scrive una nota, le proposte (Raddrizza/Compila/Riassumi) si tolgono: coprirebbero «Fatto»
+   (la barra della lettura sta in basso e non dà fastidio) */
+main:has(#signBar:not([hidden])) .avviso-storta { display: none; }
 
 /* Tempo di lettura accanto al nome del file */
 .tempo-lettura { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .tempo-lettura[hidden] { display: none; }
 @media (max-width: 600px) { .tempo-lettura { display: none; } }
+
+/* Segnalibri (31/10/2026): l'indice del PDF e i segnalibri propri, nel pannello accanto */
+.seg-sezione { margin: 0 0 18px; }
+.seg-sezione + .seg-sezione { padding-top: 14px; border-top: 1px solid var(--border); }
+.seg-sezione h3 { margin: 0 0 8px; font-family: "Josefin Sans", system-ui, sans-serif; font-size: 15px; font-weight: 600; }
+.seg-niente, .seg-vuoto { margin: 0; padding: 4px 0; color: var(--muted); font-size: 13.5px; }
+.seg-voce { display: flex; flex-direction: column; flex: 1; min-width: 0; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px;
+  background: none; color: var(--text); font: inherit; font-size: 14px; line-height: 1.35; text-align: left; text-decoration: none;
+  cursor: pointer; overflow-wrap: anywhere; }
+button.seg-voce:hover, a.seg-voce:hover { background: var(--surface-2); }
+span.seg-voce { cursor: default; color: var(--muted); }
+.seg-indice, .seg-indice ul { margin: 0; padding: 0; list-style: none; }
+.seg-indice ul { padding-left: 18px; }
+.seg-indice li { margin: 1px 0; }
+/* il triangolo apre e chiude il ramo, il titolo porta alla pagina */
+.seg-indice summary { display: flex; align-items: flex-start; gap: 2px; cursor: pointer; list-style: none; }
+.seg-indice summary::-webkit-details-marker { display: none; }
+.seg-indice summary::before { content: "▸"; flex: none; width: 16px; padding-top: 5px; text-align: center; color: var(--muted); font-size: 13px; }
+.seg-indice details[open] > summary::before { content: "▾"; }
+.seg-indice summary .seg-voce { flex: 1; width: auto; }
+/* le voci senza sottovoci si allineano ai titoli dei rami accanto (solo se nell'elenco ci sono rami) */
+.seg-indice:has(> li > details) > li > .seg-voce, .seg-indice ul:has(> li > details) > li > .seg-voce { margin-left: 18px; width: calc(100% - 18px); }
+.seg-aggiungi { display: flex; gap: 6px; margin: 0 0 10px; }
+.seg-aggiungi input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+.seg-aggiungi .btn { flex: none; }
+.seg-miei { margin: 0; padding: 0; list-style: none; }
+.seg-miei li { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); }
+.seg-miei li.seg-vuoto { display: block; border-bottom: 0; }
+.seg-miei .seg-voce em { color: var(--muted); font-style: normal; font-size: 12px; }
+.seg-miei .seg-elimina { width: 32px; min-height: 32px; color: var(--muted); }
+.seg-nota { margin: 12px 0 0; }
+@media (max-width: 420px) {
+  .seg-aggiungi { flex-wrap: wrap; }
+  .seg-aggiungi .btn { flex: 1 1 100%; }
+}
 
 /* Impostazioni */
 .imp-dialog { width: min(560px, calc(100vw - 32px)); }
@@ -1271,3 +1330,20 @@ main:has(.sign-bar:not([hidden])) .avviso-storta { display: none; }
 .imp-avv summary { cursor: pointer; padding: 4px 0; font-size: 14px; font-weight: 600; }
 .imp-avv p { margin: 2px 0 8px; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
 .imp-versione { margin: 12px 0 0; font-size: 12px; color: var(--muted); text-align: right; }
+
+/* Lettura ad alta voce (31/10/2026): la barra sta in basso (quella della firma sta in alto), la frase in lettura
+   si colora sulla pagina come i pezzi presi dal riquadro (.boxMark), nel menu «Altro» la voce sta sotto i filtri */
+.leggi-bar { top: auto; bottom: max(14px, env(safe-area-inset-bottom)); gap: 8px; padding-left: 14px; }
+.leggi-stato { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.leggi-bar select { height: 32px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
+.leggi-bar .btn { min-height: 32px; }
+.leggi-frase { position: absolute; z-index: 4; background: rgb(164 22 26 / 0.22); border-radius: 2px; pointer-events: none; mix-blend-mode: multiply; }
+#menuAltro .leggi-voce { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; }
+#menuAltro .leggi-voce:disabled { opacity: 0.5; cursor: default; }
+/* col pannello accanto la barra resta al centro del PDF; col pannello sotto (iPad in verticale, telefono) sta sopra di lui */
+@media (min-width: 761px) and (orientation: landscape), (min-width: 1100px) {
+  body.panel-open .leggi-bar { left: calc((100% - var(--pannello)) / 2); }
+}
+@media (max-width: 1099px) and (orientation: portrait), (max-width: 760px) {
+  body.panel-open .leggi-bar { bottom: calc(50% + 12px); }
+}

@@ -9,7 +9,8 @@ let dlg = null;
 const avvertenze = [
   ["Dove vanno i tuoi file", "I documenti si aprono e si leggono su questo dispositivo: non vanno su nessun server. Solo le " +
     "funzioni con l'AI (Compila, Riassumi, Traduci, Sottolinea, Spiega, OCR sul server) mandano il testo o la pagina al " +
-    "compilatore della Vinicola, e solo quando le premi. Il compilatore usa l'AI Claude di Anthropic."],
+    "compilatore della Vinicola, e solo quando le premi. Il compilatore usa l'AI Claude di Anthropic. La lettura ad alta " +
+    "voce usa le voci del dispositivo (su alcuni browser le voci «di rete» mandano il testo al produttore del browser)."],
   ["Cosa resta e dove", "La bozza dell'ultimo documento modificato resta solo in questo browser finché non lo salvi. Il " +
     "compilatore ricorda per 30 giorni i moduli compilati (per rifarli subito uguali) e scrive un registro senza i dati."],
   ["L'AI può sbagliare", "Dati compilati, riassunti, traduzioni, spiegazioni e punti sottolineati sono scritti dall'AI: " +

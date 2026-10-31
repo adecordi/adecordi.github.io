@@ -4,7 +4,8 @@ const { FX, SHOTS, BASE, check, watchErrors, openFixture, text } = require("./co
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: "block" });
+  // 1600 di larghezza: da 1440 a 1599 la barra su una riga nasconde la tendina dello zoom, usata più sotto (31/10/2026)
+  const ctx = await browser.newContext({ viewport: { width: 1600, height: 860 }, acceptDownloads: true, serviceWorkers: "block" });
   const page = await ctx.newPage();
   const errors = [];
   watchErrors(page, errors);

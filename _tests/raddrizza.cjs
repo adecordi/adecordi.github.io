@@ -54,6 +54,8 @@ async function pendenza(page, png) {
     : route.fulfill({ status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({ pdf: fs.readFileSync(ESEMPIO).toString("base64"), metodo: "posizioni", compilati: [], mancanti: [] }) }));
   await page.goto(BASE + "#compilatore=" + encodeURIComponent(FAKE) + "&chiave=prova");
+  // le scritte in basso (toast «Pagina raddrizzata», stato dell'OCR) formano una falsa riga inclinata nello screenshot (31/10/2026)
+  await page.addStyleTag({ content: "#toast, .ocr-status { visibility: hidden !important; }" });
   await page.setInputFiles("#fileInput", ESEMPIO);
   await page.waitForSelector(".page[data-page-number='1'] canvas");
   await page.waitForTimeout(1500);
